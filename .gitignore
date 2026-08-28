@@ -1,4 +1,15 @@
-.vercel
+# Segredos — nunca versionar
+token.local
+SO-O-TOKEN.txt
+variaveis-vercel.txt
+recovery-codes.txt
+.access_token
 .env
 .env.local
+
+# Gerados / transitórios
+cache/
+notas/
+pedido.json
+vercel/.vercel
 node_modules

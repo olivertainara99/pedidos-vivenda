@@ -1,0 +1,998 @@
+<title>Pedidos Vivenda dos Sucos</title>
+
+<style id="css">
+@import url('https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&display=swap');
+
+:root{
+  --fundo:#f5f7f0; --superficie:#ffffff; --superficie2:#edf0e4; --borda:#dae0cd;
+  --tinta:#1b2116; --fraca:#656e59; --primaria:#3d7a41; --primaria-forte:#2d5c31;
+  --sobre-primaria:#ffffff; --acento:#7f9418; --perigo:#a5402c; --ok:#2f7d4f;
+  --sombra:0 1px 2px rgba(27,33,22,.06), 0 8px 24px -12px rgba(27,33,22,.18);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --fundo:#11160d; --superficie:#191f14; --superficie2:#222a1a; --borda:#343e29;
+    --tinta:#e9eee0; --fraca:#98a189; --primaria:#79b47d; --primaria-forte:#a3d0a5;
+    --sobre-primaria:#10160c; --acento:#c3dc46; --perigo:#e5907c; --ok:#7fd3a0;
+    --sombra:0 1px 2px rgba(0,0,0,.4), 0 8px 24px -12px rgba(0,0,0,.7);
+  }
+}
+:root[data-theme="dark"]{
+  --fundo:#11160d; --superficie:#191f14; --superficie2:#222a1a; --borda:#343e29;
+  --tinta:#e9eee0; --fraca:#98a189; --primaria:#79b47d; --primaria-forte:#a3d0a5;
+  --sobre-primaria:#10160c; --acento:#c3dc46; --perigo:#e5907c; --ok:#7fd3a0;
+  --sombra:0 1px 2px rgba(0,0,0,.4), 0 8px 24px -12px rgba(0,0,0,.7);
+}
+
+*{box-sizing:border-box}
+body{
+  margin:0; background:var(--fundo); color:var(--tinta);
+  font-family:Archivo,"Segoe UI",system-ui,sans-serif;
+  font-size:16px; line-height:1.45; -webkit-text-size-adjust:100%;
+}
+.env{max-width:680px; margin:0 auto; padding:20px 16px 132px;}
+
+/* ---- cabeçalho ---- */
+.topo{
+  display:flex; align-items:center; gap:14px; margin-bottom:10px;
+  padding-bottom:14px; border-bottom:1px solid var(--borda);
+}
+.topo h1{
+  font-family:"Instrument Serif",Georgia,serif; font-weight:400;
+  font-size:32px; line-height:1.05; margin:0; letter-spacing:-.01em; text-wrap:balance;
+}
+/* a marca fica sempre sobre chapa clara: no tema escuro é assim que uma logo
+   colorida se apresenta sem perder as cores próprias */
+.chapa{
+  background:#fff; border-radius:10px; padding:7px 9px; flex:0 0 auto;
+  display:inline-flex; align-items:center; line-height:0;
+  box-shadow:0 1px 2px rgba(27,33,22,.10);
+}
+.chapa img{display:block; height:44px; width:auto}
+.porta .chapa{margin:0 auto 20px; padding:11px 14px}
+.porta .chapa img{height:62px}
+.sub{color:var(--fraca); font-size:14px; margin:0 0 14px}
+.papel{
+  display:flex; align-items:center; gap:9px; margin:0 0 22px; font-size:13px; color:var(--fraca);
+}
+.papel .quem{
+  font-weight:600; color:var(--tinta); border:1px solid var(--borda);
+  background:var(--superficie2); padding:4px 11px; border-radius:99px; font-size:13px;
+}
+.papel button{background:none; border:0; color:var(--fraca); text-decoration:underline; cursor:pointer; font-size:13px; padding:0}
+.papel button:hover{color:var(--tinta)}
+
+/* ---- escolha de papel ---- */
+.porta{max-width:520px; margin:14vh auto 0; padding:0 16px; text-align:center}
+.porta h1{font-family:"Instrument Serif",Georgia,serif; font-weight:400; font-size:40px; margin:0 0 6px}
+.porta p{color:var(--fraca); font-size:15px; margin:0 0 26px}
+.portas{display:grid; gap:12px}
+.portao{
+  display:block; width:100%; text-align:left; cursor:pointer;
+  background:var(--superficie); border:1px solid var(--borda); border-radius:12px;
+  padding:18px 20px; box-shadow:var(--sombra);
+}
+.portao:hover{border-color:var(--primaria)}
+.portao b{display:block; font-size:17px; font-weight:600; margin-bottom:3px}
+.portao span{font-size:13.5px; color:var(--fraca); line-height:1.35; display:block}
+
+/* ---- blocos ---- */
+.bloco{
+  background:var(--superficie); border:1px solid var(--borda); border-radius:12px;
+  padding:16px; margin-bottom:16px; box-shadow:var(--sombra);
+}
+.bloco.destaque{border-color:color-mix(in srgb,var(--acento) 55%,var(--borda))}
+.rot{
+  font-size:11px; letter-spacing:.13em; text-transform:uppercase;
+  color:var(--fraca); font-weight:600; margin:0 0 10px;
+}
+.bloco.destaque .rot{color:var(--acento)}
+
+/* ---- campos ---- */
+input,button,select,textarea{font:inherit; color:inherit}
+.campo{
+  width:100%; padding:11px 13px; border-radius:9px;
+  border:1px solid var(--borda); background:var(--superficie2); color:var(--tinta);
+}
+.campo:focus-visible,button:focus-visible{outline:2px solid var(--primaria); outline-offset:2px}
+
+/* ---- busca de cliente ---- */
+.busca{position:relative}
+.lista{
+  position:absolute; z-index:9; left:0; right:0; top:calc(100% + 5px);
+  background:var(--superficie); border:1px solid var(--borda); border-radius:10px;
+  box-shadow:var(--sombra); max-height:min(52vh,340px); overflow-y:auto; padding:5px;
+}
+.lista:empty{display:none}
+.opt{
+  display:block; width:100%; text-align:left; background:none; border:0;
+  padding:9px 10px; border-radius:7px; cursor:pointer; line-height:1.3;
+}
+.opt:hover,.opt:focus-visible{background:var(--superficie2)}
+.opt b{font-weight:600; display:block; font-size:14px}
+.opt span{font-size:12px; color:var(--fraca)}
+
+.escolhido{
+  display:flex; gap:12px; align-items:flex-start; justify-content:space-between;
+  background:var(--superficie2); border:1px solid var(--borda);
+  border-left:3px solid var(--primaria); border-radius:9px; padding:11px 13px;
+}
+.escolhido b{display:block; font-size:14px; font-weight:600}
+.escolhido span{font-size:12px; color:var(--fraca)}
+
+/* ---- produtos ---- */
+.grupo + .grupo{margin-top:18px}
+.grupo h3{
+  font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:var(--acento);
+  font-weight:700; margin:0 0 8px; padding-bottom:6px; border-bottom:1px solid var(--borda);
+}
+.item{
+  display:grid; grid-template-columns:1fr auto; gap:10px; align-items:center;
+  padding:7px 0; border-bottom:1px solid var(--borda);
+}
+.item:last-child{border-bottom:0}
+.item.tem{background:linear-gradient(90deg,color-mix(in srgb,var(--acento) 12%,transparent),transparent); border-radius:6px; padding-left:8px; margin-left:-8px}
+.item .nome{font-size:14px; line-height:1.25}
+.item .preco{font-size:12px; color:var(--fraca); font-variant-numeric:tabular-nums}
+.qtd{
+  width:82px; padding:9px 10px; text-align:center; border-radius:8px;
+  border:1px solid var(--borda); background:var(--superficie2);
+  font-variant-numeric:tabular-nums; font-weight:600;
+}
+.qtd::-webkit-outer-spin-button,.qtd::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+.qtd[type=number]{-moz-appearance:textfield}
+
+/* ---- botões ---- */
+.btn{
+  border:1px solid var(--borda); background:var(--superficie2); color:var(--tinta);
+  padding:11px 16px; border-radius:9px; cursor:pointer; font-weight:600; font-size:15px;
+}
+.btn:hover{border-color:var(--primaria)}
+.btn[disabled]{opacity:.45; cursor:not-allowed}
+.btn.principal{background:var(--primaria); border-color:var(--primaria); color:var(--sobre-primaria)}
+.btn.principal:hover{background:var(--primaria-forte); border-color:var(--primaria-forte)}
+.btn.miudo{padding:6px 11px; font-size:13px; font-weight:500}
+.btn.perigo{color:var(--perigo)}
+.btn.perigo:hover{border-color:var(--perigo)}
+.btn.marcado{background:var(--primaria); border-color:var(--primaria); color:var(--sobre-primaria)}
+.btn.marcado-nao{background:var(--perigo); border-color:var(--perigo); color:#fff}
+.acoes{display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:14px}
+
+/* ---- fila / pedidos ---- */
+.pedido{
+  border:1px solid var(--borda); border-radius:10px; padding:12px 14px;
+  background:var(--superficie); margin-bottom:10px;
+}
+.pedido.pendendo{border-left:3px solid var(--acento)}
+.pedido.vai-sim{border-left:3px solid var(--primaria); background:color-mix(in srgb,var(--primaria) 6%,var(--superficie))}
+.pedido.vai-nao{border-left:3px solid var(--perigo); opacity:.72}
+.pedido.vai-fora{border-left:3px solid var(--perigo); opacity:.55}
+.pedido.vai-fora .cli{text-decoration:line-through}
+.pedido .cab{display:flex; justify-content:space-between; gap:10px; align-items:flex-start}
+.pedido .cli{font-weight:600; font-size:15px; line-height:1.25}
+.pedido .loc{font-size:12px; color:var(--fraca)}
+.pedido ul{margin:9px 0 0; padding:0; list-style:none; font-size:13.5px}
+.pedido li{display:flex; justify-content:space-between; gap:12px; padding:2px 0; color:var(--fraca)}
+.pedido li b{color:var(--tinta); font-weight:600; font-variant-numeric:tabular-nums}
+.total{
+  display:flex; justify-content:space-between; margin-top:9px; padding-top:9px;
+  border-top:1px dashed var(--borda); font-size:14px; font-variant-numeric:tabular-nums;
+}
+.selo{
+  font-size:10.5px; letter-spacing:.09em; text-transform:uppercase; font-weight:700;
+  padding:4px 9px; border-radius:99px; white-space:nowrap; border:1px solid;
+}
+.selo.fila{color:var(--fraca); border-color:var(--borda)}
+.selo.anotado{color:var(--acento); border-color:color-mix(in srgb,var(--acento) 45%,transparent)}
+.selo.autorizado{color:var(--primaria); border-color:color-mix(in srgb,var(--primaria) 50%,transparent)}
+.selo.emitida{color:var(--ok); border-color:color-mix(in srgb,var(--ok) 45%,transparent)}
+.selo.recusado{color:var(--fraca); border-color:var(--borda)}
+.selo.erro{color:var(--perigo); border-color:color-mix(in srgb,var(--perigo) 45%,transparent)}
+.nota{font-size:12.5px; color:var(--fraca); margin-top:7px; font-variant-numeric:tabular-nums}
+.vazio{color:var(--fraca); font-size:14px; padding:6px 0}
+
+/* ---- barra fixa ---- */
+.barra{
+  position:fixed; left:0; right:0; bottom:0; z-index:20;
+  background:color-mix(in srgb,var(--superficie) 92%,transparent);
+  backdrop-filter:blur(10px); border-top:1px solid var(--borda);
+  padding:12px 16px calc(12px + env(safe-area-inset-bottom));
+}
+.barra .env2{
+  max-width:680px; margin:0 auto; display:flex; gap:12px;
+  align-items:center; justify-content:space-between;
+}
+.barra .env2:empty{display:none}
+.barra .cont{font-size:13px; color:var(--fraca); line-height:1.3}
+.barra .cont b{color:var(--tinta); font-size:15px; display:block; font-variant-numeric:tabular-nums}
+.barra .grupo-btn{display:flex; gap:8px}
+
+.corrigindo{
+  display:flex; gap:12px; align-items:flex-start; justify-content:space-between;
+  border:1px solid color-mix(in srgb,var(--acento) 50%,var(--borda));
+  background:color-mix(in srgb,var(--acento) 10%,transparent);
+  border-radius:10px; padding:12px 14px; margin-bottom:16px;
+}
+.corrigindo b{display:block; font-size:14px; margin-bottom:2px}
+.corrigindo span{font-size:13px; color:var(--fraca); line-height:1.35}
+
+/* ---- escolha de CFOP ---- */
+.cfop{margin-top:10px; padding-top:10px; border-top:1px dashed var(--borda)}
+.cfop .rot{margin-bottom:6px}
+.cfop .opcoes{display:flex; gap:6px; flex-wrap:wrap}
+.cfop .opcoes button{
+  flex:1 1 auto; min-width:88px; padding:7px 9px; border-radius:8px; cursor:pointer;
+  border:1px solid var(--borda); background:var(--superficie2); color:var(--tinta);
+  font-size:13px; font-weight:600; line-height:1.2; font-variant-numeric:tabular-nums;
+}
+.cfop .opcoes button small{display:block; font-weight:400; font-size:11px; color:var(--fraca); margin-top:2px}
+.cfop .opcoes button:hover{border-color:var(--primaria)}
+.cfop .opcoes button.ativo{
+  border-color:var(--primaria); background:color-mix(in srgb,var(--primaria) 15%,var(--superficie2));
+}
+.cfop .opcoes button.ativo small{color:var(--tinta)}
+.cfop .explica{font-size:12px; color:var(--fraca); margin:7px 0 0; line-height:1.35}
+.cfop .explica b{color:var(--tinta); font-weight:600}
+.linhas-valor{margin-top:9px; padding-top:9px; border-top:1px dashed var(--borda); font-size:13.5px}
+.linhas-valor div{display:flex; justify-content:space-between; padding:1px 0; color:var(--fraca); font-variant-numeric:tabular-nums}
+.linhas-valor div.forte{color:var(--tinta); font-weight:600; font-size:14px; margin-top:3px}
+
+/* área de revisão do que será apagado de vez */
+.lixeira{
+  border:1px solid color-mix(in srgb,var(--perigo) 45%,var(--borda));
+  background:color-mix(in srgb,var(--perigo) 7%,transparent);
+  border-radius:10px; padding:13px 15px; margin-top:16px;
+}
+.lixeira p.rot{color:var(--perigo); margin-bottom:8px}
+.lixeira ul{margin:0 0 10px; padding-left:18px; font-size:13.5px; line-height:1.5}
+.lixeira li{color:var(--tinta)}
+.lixeira li span{color:var(--fraca)}
+.lixeira .obs{font-size:13px; color:var(--fraca); margin:0; line-height:1.4}
+
+.selo.corrigido{color:var(--fraca); border-color:var(--borda)}
+
+.aviso{
+  border:1px solid color-mix(in srgb,var(--perigo) 40%,var(--borda));
+  background:color-mix(in srgb,var(--perigo) 8%,transparent);
+  border-radius:9px; padding:11px 13px; font-size:13.5px; margin-bottom:14px;
+}
+.aviso b{display:block; margin-bottom:3px}
+.oculto{display:none !important}
+@media (prefers-reduced-motion:reduce){*{animation:none !important; transition:none !important}}
+</style>
+
+<div class="env" id="raiz"></div>
+
+<div class="barra"><div class="env2" id="barra"></div></div>
+
+<script type="application/json" id="estado">{"versao":2,"pedidos":[]}</script>
+
+<script id="app">
+(function(){
+  "use strict";
+
+  var CLIENTES = [{"codigo":54,"nome":"CARLOS HENRIQUE SILVA","fantasia":"","cpfcnpj":"48537527491","bairro":"Prazeres","cidade":"Jaboat\u00e3o dos Guararapes"},{"codigo":56,"nome":"CARMONA CABRERA CONSTRUTORA DE OBRAS S.A","fantasia":"CARMONA CABRERA CONSTRUTORA DE OBRAS S.A","cpfcnpj":"25316468000110","bairro":"MARCO","cidade":"Bel\u00e9m"},{"codigo":49,"nome":"CARREFOUR COMERCIO E INDUSTRIA LTDA","fantasia":"","cpfcnpj":"","bairro":"","cidade":""},{"codigo":30,"nome":"FORMOSA SUPERMERCADOS E MAGAZINE LTDA - AUG MONT","fantasia":"","cpfcnpj":"63864771000732","bairro":"PARQUE VERDE","cidade":"Bel\u00e9m"},{"codigo":31,"nome":"FORMOSA SUPERMERCADOS E MAGAZINE LTDA - CIDADE NOVA","fantasia":"","cpfcnpj":"63864771000570","bairro":"COQUEIRO","cidade":"Ananindeua"},{"codigo":29,"nome":"FORMOSA SUPERMERCADOS E MAGAZINE LTDA - DUQUE","fantasia":"","cpfcnpj":"63864771000147","bairro":"MARCO","cidade":"Bel\u00e9m"},{"codigo":32,"nome":"FORMOSA SUPERMERCADOS E MAGAZINE LTDA - GUAMA","fantasia":"","cpfcnpj":"63864771001895","bairro":"GUAMA","cidade":"Bel\u00e9m"},{"codigo":33,"nome":"FORMOSA SUPERMERCADOS E MAGAZINE LTDA - UMARIZAL","fantasia":"","cpfcnpj":"63864771001380","bairro":"TELEGRAFO","cidade":"Bel\u00e9m"},{"codigo":59,"nome":"FRANCISCO C\u00c9LIO ALBUQUERQUE ADRIANO","fantasia":"","cpfcnpj":"22986448372","bairro":"Parque 10 de Novembro","cidade":"Manaus"},{"codigo":55,"nome":"JOSE KLEBER MAURICI TEIXEIRA","fantasia":"","cpfcnpj":"17984114234","bairro":"Juli\u00e3o Ramos","cidade":"Macap\u00e1"},{"codigo":5,"nome":"LIDER COMERCIO E INDUSTRIA LTDA","fantasia":"LIDER CASTANHEIRA","cpfcnpj":"05054671000744","bairro":"CASTANHEIRA","cidade":"Bel\u00e9m"},{"codigo":1,"nome":"LIDER COMERCIO E INDUSTRIA LTDA - LJ 01 CONDOR","fantasia":"SUPERMERCADOS LIDER","cpfcnpj":"05054671001635","bairro":"CONDOR","cidade":"Bel\u00e9m"},{"codigo":3,"nome":"LIDER COMERCIO E INDUSTRIA LTDA - LJ 02 ALCINDO CACELA","fantasia":"","cpfcnpj":"05054671000230","bairro":"CREMACAO","cidade":"Bel\u00e9m"},{"codigo":2,"nome":"LIDER COMERCIO E INDUSTRIA LTDA - LJ 03 DOCA","fantasia":"","cpfcnpj":"05054671000582","bairro":"Umarizal","cidade":"Bel\u00e9m"},{"codigo":4,"nome":"LIDER COMERCIO E INDUSTRIA LTDA - LJ 04 OBIDOS","fantasia":"","cpfcnpj":"05054671000663","bairro":"CIDADE VELHA","cidade":"Bel\u00e9m"},{"codigo":6,"nome":"LIDER COMERCIO E INDUSTRIA LTDA - LJ 07 PRACA BRASIL","fantasia":"","cpfcnpj":"05054671000906","bairro":"UMARIZAL","cidade":"Bel\u00e9m"},{"codigo":7,"nome":"LIDER COMERCIO E INDUSTRIA LTDA - LJ 08 BATISTA CAMPOS","fantasia":"","cpfcnpj":"05054671001040","bairro":"BATISTA CAMPOS","cidade":"Bel\u00e9m"},{"codigo":8,"nome":"LIDER COMERCIO E INDUSTRIA LTDA - LJ 09 HUMAITA","fantasia":"","cpfcnpj":"05054671001120","bairro":"MARCO","cidade":"Bel\u00e9m"},{"codigo":27,"nome":"LIDER COMERCIO E INDUSTRIA LTDA - LJ 10 CASTANHAL","fantasia":"","cpfcnpj":"05054671001201","bairro":"CENTRO","cidade":"Castanhal"},{"codigo":9,"nome":"LIDER COMERCIO E INDUSTRIA LTDA - LJ 11 ICOARACI","fantasia":"","cpfcnpj":"05054671001392","bairro":"ICOARACI","cidade":"Bel\u00e9m"},{"codigo":10,"nome":"LIDER COMERCIO E INDUSTRIA LTDA - LJ 12 BR","fantasia":"","cpfcnpj":"05054671001473","bairro":"COQUEIRO","cidade":"Ananindeua"},{"codigo":11,"nome":"LIDER COMERCIO E INDUSTRIA LTDA - LJ 17 CANUDOS","fantasia":"","cpfcnpj":"05054671001805","bairro":"CANUDOS","cidade":"Bel\u00e9m"},{"codigo":12,"nome":"LIDER COMERCIO E INDUSTRIA LTDA - LJ 18 CIDADE NOVA","fantasia":"","cpfcnpj":"05054671001988","bairro":" CIDADE NOVA","cidade":"Ananindeua"},{"codigo":13,"nome":"LIDER COMERCIO E INDUSTRIA LTDA - LJ 24 QUINTINO","fantasia":"","cpfcnpj":"05054671002445","bairro":"CREMACAO","cidade":"Bel\u00e9m"},{"codigo":14,"nome":"LIDER COMERCIO E INDUSTRIA LTDA - LJ 27 PEDREIRA","fantasia":"","cpfcnpj":"05054671002798","bairro":"PEDREIRA","cidade":"Bel\u00e9m"},{"codigo":15,"nome":"LIDER COMERCIO E INDUSTRIA LTDA - LJ 28 INDEPENDENCIA","fantasia":"","cpfcnpj":"05054671002879","bairro":"PARQUE VERDE","cidade":"Bel\u00e9m"},{"codigo":25,"nome":"LIDER COMERCIO E INDUSTRIA LTDA - LJ 31 BARCARENA","fantasia":"","cpfcnpj":"05054671003174","bairro":"NUCLEO","cidade":"Barcarena"},{"codigo":22,"nome":"LIDER COMERCIO E INDUSTRIA LTDA - LJ 32 MARABA","fantasia":"","cpfcnpj":"05054671003255","bairro":"NOVA MARABA","cidade":"Marab\u00e1"},{"codigo":16,"nome":"LIDER COMERCIO E INDUSTRIA LTDA - LJ 33 AUG MONT","fantasia":"","cpfcnpj":"05054671003417","bairro":"TAPANA","cidade":"Bel\u00e9m"},{"codigo":26,"nome":"LIDER COMERCIO E INDUSTRIA LTDA - LJ 36 PARAGOMINAS","fantasia":"","cpfcnpj":"05054671003689","bairro":"NOVA CONQUISTA","cidade":"Paragominas"},{"codigo":24,"nome":"LIDER COMERCIO E INDUSTRIA LTDA - LJ 37 CAPANEMA","fantasia":"","cpfcnpj":"05054671003760","bairro":"CENTRO","cidade":"Capanema"},{"codigo":23,"nome":"LIDER COMERCIO E INDUSTRIA LTDA - LJ 38 ABAETETUBA","fantasia":"","cpfcnpj":"05054671003840","bairro":"CENTRO","cidade":"Abaetetuba"},{"codigo":17,"nome":"LIDER COMERCIO E INDUSTRIA LTDA - LJ 40 MARAMBAIA","fantasia":"","cpfcnpj":"05054671004065","bairro":"MARAMBAIA","cidade":"Bel\u00e9m"},{"codigo":21,"nome":"LIDER COMERCIO E INDUSTRIA LTDA - LJ 42 SALINOPOLIS","fantasia":"","cpfcnpj":"05054671004227","bairro":"SAO TOME","cidade":"Salin\u00f3polis"},{"codigo":19,"nome":"LIDER COMERCIO E INDUSTRIA LTDA - LJ 44 GUAMA","fantasia":"","cpfcnpj":"05054671005622","bairro":"GUAMA","cidade":"Bel\u00e9m"},{"codigo":57,"nome":"LIDER COMERCIO E INDUSTRIA LTDA - LJ 47 14 DE MAR\u00c7O","fantasia":"LIDER 14 DE MARCO","cpfcnpj":"05054671005460","bairro":"UMARIZAL","cidade":"Bel\u00e9m"},{"codigo":20,"nome":"LIDER COMERCIO E INDUSTRIA LTDA - LJ 48 SAO FRANCISCO","fantasia":"","cpfcnpj":"05054671005380","bairro":"CAMPINA","cidade":"Bel\u00e9m"},{"codigo":28,"nome":"LIDER COMERCIO E INDUSTRIA LTDA - LJ 50 ESTRELA","fantasia":"","cpfcnpj":"05054671005118","bairro":"ESTRELA","cidade":"Castanhal"},{"codigo":18,"nome":"LIDER COMERCIO E INDUSTRIA LTDA - LJ 54 DUQUE","fantasia":"","cpfcnpj":"05054671004731","bairro":"MARCO","cidade":"Bel\u00e9m"},{"codigo":34,"nome":"M A DE ANDRADE KALUME LTDA","fantasia":"MAURA JARDINS","cpfcnpj":"04359519000111","bairro":"REDUTO","cidade":"Bel\u00e9m"},{"codigo":50,"nome":"M DA SILVA PINHEIRO","fantasia":"MERCANTIL PINHEIRO","cpfcnpj":"20928157000199","bairro":"CENTRO","cidade":"S\u00e3o Sebasti\u00e3o da Boa Vista"},{"codigo":35,"nome":"MATEUS SUPERMERCADOS S.A. - AUGUSTO MONTENEGRO","fantasia":"MIX MATEUS","cpfcnpj":"03995515009202","bairro":"TENONE","cidade":"Bel\u00e9m"},{"codigo":37,"nome":"MATEUS SUPERMERCADOS S.A. - CASTANHAL","fantasia":"MATEUS SUPERMERCADOS","cpfcnpj":"03995515009032","bairro":"IANETAMA","cidade":"Castanhal"},{"codigo":36,"nome":"MATEUS SUPERMERCADOS S.A. - CIDADE NOVA","fantasia":"MIX MATEUS","cpfcnpj":"03995515017485","bairro":"COQUEIRO","cidade":"Ananindeua"},{"codigo":40,"nome":"MATEUS SUPERMERCADOS S.A. - COQUEIRO","fantasia":"MIX MATEUS","cpfcnpj":"03995515014893","bairro":"COQUEIRO","cidade":"Ananindeua"},{"codigo":60,"nome":"MATEUS SUPERMERCADOS S.A. - DOCA","fantasia":"","cpfcnpj":"03995515032603","bairro":"REDUTO","cidade":"Bel\u00e9m"},{"codigo":44,"nome":"MATEUS SUPERMERCADOS S.A. - JADERLANDIA","fantasia":"MATEUS SUPERMERCADOS","cpfcnpj":"03995515009113","bairro":"ATALAIA","cidade":"Ananindeua"},{"codigo":41,"nome":"MATEUS SUPERMERCADOS S.A. - MAGUARI","fantasia":"MATEUS SUPERMERCADOS","cpfcnpj":"03995515009547","bairro":"CENTRO","cidade":"Ananindeua"},{"codigo":42,"nome":"MATEUS SUPERMERCADOS S.A. - MARAMBAIA","fantasia":"MATEUS SUPERMERCADOS S.A","cpfcnpj":"03995515009628","bairro":"MARAMBAIA","cidade":"Bel\u00e9m"},{"codigo":38,"nome":"MATEUS SUPERMERCADOS S.A. - MARITUBA","fantasia":"","cpfcnpj":"03995515012092","bairro":"URIBOCA","cidade":"Marituba"},{"codigo":43,"nome":"MATEUS SUPERMERCADOS S.A. - MIX CASTANHAL","fantasia":"MIX CASTANHAL","cpfcnpj":"03995515011282","bairro":"NOVA OLINDA","cidade":"Castanhal"},{"codigo":51,"nome":"MATEUS SUPERMERCADOS S.A. - MIX MAGUARI GUAJAR\u00c1","fantasia":"MIX MATEUS MAGUARI GUAJAR\u00c1","cpfcnpj":"03995515033332","bairro":"COQUEIRO","cidade":"Ananindeua"},{"codigo":52,"nome":"MATEUS SUPERMERCADOS S.A. - MIX MARITUBA NOVO HORIZONTE","fantasia":"MIX MATEUS MARITUBA NOVO HORIZONTE","cpfcnpj":"03995515029815","bairro":"NOVO HORIZONTE","cidade":"Marituba"},{"codigo":39,"nome":"MATEUS SUPERMERCADOS S.A. - PEDREIRA","fantasia":"MIX MATEUS","cpfcnpj":"03995515013730","bairro":"PEDREIRA","cidade":"Bel\u00e9m"},{"codigo":47,"nome":"NKN COMERCIAL LTDA","fantasia":"NKN COMERCIAL","cpfcnpj":"19904800000165","bairro":"VILA BARUEL","cidade":"S\u00e3o Paulo"},{"codigo":53,"nome":"NORTE REFRIGERACAO LTDA","fantasia":"NORTE REFRIG.","cpfcnpj":"04920658000849","bairro":"TAPANA","cidade":"Bel\u00e9m"},{"codigo":48,"nome":"R. T. KALUME","fantasia":"VIVENDA DOS SUCOS","cpfcnpj":"23388480000105","bairro":"RURAL","cidade":"S\u00e3o Francisco do Par\u00e1"},{"codigo":58,"nome":"SUANY SOARES RANIERI","fantasia":"","cpfcnpj":"01937792269","bairro":"Parque Guajar\u00e1 (Icoaraci)","cidade":"Bel\u00e9m"},{"codigo":45,"nome":"SUPERMERCADO CIDADE LTDA - PEDREIRA","fantasia":"SUPERMERCADO CIDADE","cpfcnpj":"83306969000112","bairro":"PEDREIRA","cidade":"Bel\u00e9m"},{"codigo":46,"nome":"SUPERMERCADO CIDADE LTDA - PRESIDENTE VARGAS","fantasia":"DELI CIDADE","cpfcnpj":"83306969000546","bairro":"CAMPINA","cidade":"Bel\u00e9m"}];
+  var PRODUTOS = [{"codigo":23,"descricao":"BAGA\u00c7O DE CANA DE A\u00c7UCAR","precoVenda":0,"unidadeTributada":"UN","ncm":"23032000","listaImagens":[]},{"codigo":21,"descricao":"BISCOITO COM MEL DE CANA E ESPECIARIAS 70g","precoVenda":5.9,"unidadeTributada":"UN","ncm":"19059020","listaImagens":[]},{"codigo":29,"descricao":"CALDO DE CANA COPO 300ML","precoVenda":6.99,"unidadeTributada":"UN","ncm":"20098990","listaImagens":[]},{"codigo":28,"descricao":"CALDO DE CANA COPO 500ML","precoVenda":10.99,"unidadeTributada":"UN","ncm":"20098990","listaImagens":[]},{"codigo":26,"descricao":"CALDO DE CANA GARRAFA 500ML","precoVenda":12.99,"unidadeTributada":"UN","ncm":"20098990","listaImagens":[]},{"codigo":27,"descricao":"CALDO DE CANA GARRAFA DE 1 LITRO","precoVenda":18.99,"unidadeTributada":"UN","ncm":"20098990","listaImagens":[]},{"codigo":25,"descricao":"CANA DE ACUCAR IN NATURA 35cm","precoVenda":3.99,"unidadeTributada":"UN","ncm":"12129300","listaImagens":[]},{"codigo":24,"descricao":"CERVEJEIRA IMBERA 244L PV PT CCV144 220V","precoVenda":0,"unidadeTributada":"","ncm":"","listaImagens":[]},{"codigo":16,"descricao":"FREEZER HOR ELECTROLUX HE150 143L B 220V","precoVenda":1722.99,"unidadeTributada":"UN","ncm":"84183000","listaImagens":[]},{"codigo":13,"descricao":"MEL DE CANA DA MOENDA 360 G","precoVenda":8.5,"unidadeTributada":"UN","ncm":"17031000","listaImagens":[]},{"codigo":3,"descricao":"SUCO DE CANA DE ACUCAR 1 LITRO","precoVenda":6.55,"unidadeTributada":"UN","ncm":"20098990","listaImagens":[]},{"codigo":1,"descricao":"SUCO DE CANA DE ACUCAR 330ML","precoVenda":3.45,"unidadeTributada":"UN","ncm":"20098990","listaImagens":[]},{"codigo":2,"descricao":"SUCO DE CANA DE ACUCAR 500ML","precoVenda":5.2,"unidadeTributada":"UN","ncm":"20098990","listaImagens":[]},{"codigo":20,"descricao":"SUCO DE CANA DE ACUCAR COM LARANJA 1 LITRO","precoVenda":9,"unidadeTributada":"UN","ncm":"20098990","listaImagens":[]},{"codigo":18,"descricao":"SUCO DE CANA DE ACUCAR COM LARANJA 330ML","precoVenda":4.8,"unidadeTributada":"UN","ncm":"20098990","listaImagens":[]},{"codigo":19,"descricao":"SUCO DE CANA DE ACUCAR COM LARANJA 500ML","precoVenda":6.9,"unidadeTributada":"UN","ncm":"20098990","listaImagens":[]},{"codigo":6,"descricao":"SUCO DE CANA DE ACUCAR COM LIM\u00c3O 1 LITRO","precoVenda":9,"unidadeTributada":"UN","ncm":"20098990","listaImagens":[]},{"codigo":4,"descricao":"SUCO DE CANA DE ACUCAR COM LIM\u00c3O 330ML","precoVenda":4.8,"unidadeTributada":"UN","ncm":"20098990","listaImagens":[]},{"codigo":5,"descricao":"SUCO DE CANA DE ACUCAR COM LIM\u00c3O 500ML","precoVenda":6.9,"unidadeTributada":"UN","ncm":"20098990","listaImagens":[]},{"codigo":17,"descricao":"VITRINE EXPOSIT. VERT. 402LT 220V FRICON BRANCO S\/ BACK LIGHT MOD. VCFM-402-2V","precoVenda":5046,"unidadeTributada":"UN","ncm":"84185090","listaImagens":[]}];
+
+  var LOGO = 'data:image/webp;base64,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';
+
+  function marca(){
+    return '<span class="chapa"><img src="' + LOGO + '" alt="Vivenda dos Sucos" width="198" height="118"></span>';
+  }
+
+  var FIM = '<' + '/script>';
+  var CHAVE_FILA = 'vds_fila_v1';
+  var CHAVE_NOME = 'vds_nome_v1';
+  var CHAVE_PAPEL = 'vds_papel_v1';
+
+  var BARRA_HTML = '<div class="barra"><div class="env2" id="barra"></div></div>';
+
+  // ---------- estado publicado ----------
+  var ESTADO;
+  try{ ESTADO = JSON.parse(document.getElementById('estado').textContent); }
+  catch(e){ ESTADO = {versao:0, pedidos:[]}; }
+  if(!ESTADO.pedidos) ESTADO.pedidos = [];
+
+  // ---------- preferências deste aparelho ----------
+  function ler(k, padrao){ try{ return localStorage.getItem(k) || padrao; }catch(e){ return padrao; } }
+  function gravar(k, v){ try{ localStorage.setItem(k, v); }catch(e){} }
+
+  var papel = ler(CHAVE_PAPEL, '');       // 'jean' (anota) | 'dona' (autoriza)
+  var nome = ler(CHAVE_NOME, '');
+
+  // ---------- fila local do lançador (só deste aparelho, até enviar) ----------
+  var fila = [];
+  try{ fila = JSON.parse(localStorage.getItem(CHAVE_FILA) || '[]'); }catch(e){ fila = []; }
+  var publicados = {};
+  ESTADO.pedidos.forEach(function(p){ publicados[p.id] = 1; });
+  fila = fila.filter(function(p){ return !publicados[p.id]; });
+  salvarFila();
+
+  function salvarFila(){ try{ localStorage.setItem(CHAVE_FILA, JSON.stringify(fila)); }catch(e){} }
+
+  var somenteLeitura = false;
+  var clienteSel = null;
+  var quantidades = {};
+  var termo = '';
+  var decisoes = {};      // id -> 'autorizado' | 'recusado' | 'excluido' (ainda não publicado)
+  var cfops = {};         // id -> CFOP escolhido pela Tainara (ainda não publicado)
+  var substituindo = null; // id do pedido já enviado que está sendo corrigido
+
+  // Naturezas de operação usadas pela Vivenda. Conferidas no XML de notas reais:
+  // 5401 é o padrão; 5917 sai sem imposto nenhum; 5113 tributa igual à 5401.
+  var CFOPS = [
+    {c:'5401', nome:'Venda com ST', natOp:'Venda de produção do estabelecimento quando o produto esteja sujeito a ST',
+     resumo:'O padrão. ICMS com substituição tributária, mais PIS e COFINS.', tributa:true},
+    {c:'5917', nome:'Remessa consignação', natOp:'Remessa de mercadoria em consignação mercantil ou industrial',
+     resumo:'Sem imposto nenhum: ICMS isento (CST 40), PIS e COFINS não tributados. O total da nota é o total dos produtos.', tributa:false},
+    {c:'5113', nome:'Venda remetida antes', natOp:'Venda de produção do estabelecimento remetida anteriormente',
+     resumo:'Fecha a consignação. Tributa igual à 5401 — ICMS com ST, PIS e COFINS.', tributa:true}
+  ];
+  var CFOP_PADRAO = '5401';
+
+  function cfopDe(p){ return cfops[p.id] || p.cfop || CFOP_PADRAO; }
+  function infoCfop(c){
+    return CFOPS.filter(function(x){ return x.c === c; })[0] || CFOPS[0];
+  }
+  // ICMS-ST = valor do produto x MVA 20% x ICMS 19% = 3,8%, arredondado por item
+  function stPedido(p){
+    return p.itens.reduce(function(s, i){
+      return s + Math.round(i.qtd * i.preco * 0.038 * 100) / 100;
+    }, 0);
+  }
+
+  // ---------- produtos ----------
+  // O app lança só a linha de suco de cana. Caldo de cana, equipamentos e os
+  // demais itens do cadastro ficam de fora — se um dia precisar de nota deles,
+  // sai direto pelo eGestor.
+  var VENDAVEIS = PRODUTOS.filter(function(p){ return /^SUCO DE CANA/.test(p.descricao || ''); });
+
+  function grupoDe(p){
+    var d = p.descricao || '';
+    if(/LARANJA/.test(d)) return 'Com laranja';
+    if(/LIM/.test(d)) return 'Com limão';
+    return 'Tradicional';
+  }
+  function tamanho(d){ return /330/.test(d) ? 1 : (/500/.test(d) ? 2 : 3); }
+  // sob o título do sabor, o nome inteiro é repetição: fica só o tamanho
+  function rotuloCurto(d){
+    return (d || '').replace(/^SUCO DE CANA DE ACUCAR\s*/, '')
+                    .replace(/COM\s+(LIM[ÃA]O|LARANJA)\s*/, '').trim() || d;
+  }
+
+  var ORDEM_GRUPOS = ['Tradicional','Com limão','Com laranja'];
+  var GRUPOS = {};
+  VENDAVEIS.forEach(function(p){ (GRUPOS[grupoDe(p)] = GRUPOS[grupoDe(p)] || []).push(p); });
+  ORDEM_GRUPOS.forEach(function(g){
+    if(GRUPOS[g]) GRUPOS[g].sort(function(a,b){ return tamanho(a.descricao) - tamanho(b.descricao); });
+  });
+
+  function ehVendavel(cod){
+    return VENDAVEIS.some(function(p){ return p.codigo === cod; });
+  }
+
+  // todos os produtos ficam no índice, para pedidos antigos ainda renderizarem
+  var PROD_POR_COD = {};
+  PRODUTOS.forEach(function(p){ PROD_POR_COD[p.codigo] = p; });
+
+  // ---------- utilidades ----------
+  function esc(s){
+    return String(s == null ? '' : s)
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+      .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+  }
+  function moeda(v){ return 'R$ ' + Number(v || 0).toFixed(2).replace('.', ','); }
+  function localDe(c){
+    if(c.local) return c.local;   // cliente reconstruído de um pedido antigo
+    var partes = [];
+    if(c.bairro) partes.push(String(c.bairro).trim());
+    if(c.cidade) partes.push(String(c.cidade).trim());
+    return partes.join(' · ');
+  }
+  function rotuloCliente(c){
+    return c.fantasia && c.fantasia !== c.nome ? c.nome + '  (' + c.fantasia + ')' : c.nome;
+  }
+  function totalPedido(p){ return p.itens.reduce(function(s,i){ return s + i.qtd * i.preco; }, 0); }
+  function idNovo(){ return 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
+  function quandoBr(iso){
+    if(!iso) return '';
+    var d = new Date(iso);
+    if(isNaN(d)) return '';
+    function z(n){ return (n<10?'0':'') + n; }
+    return z(d.getDate()) + '/' + z(d.getMonth()+1) + ' ' + z(d.getHours()) + ':' + z(d.getMinutes());
+  }
+  function aguardando(){ return ESTADO.pedidos.filter(function(p){ return p.status === 'anotado'; }); }
+
+  // ================= RENDER =================
+  function render(){
+    var raiz = document.getElementById('raiz');
+    if(!papel){ raiz.innerHTML = telaPapel(); ligarPapel(); document.getElementById('barra').innerHTML = ''; return; }
+    raiz.innerHTML = cabecalho() + (somenteLeitura ? avisoLeitura() : '') +
+      (papel === 'dona' ? telaDona() : telaJean());
+    ligarEventos();
+    renderBarra();
+  }
+
+  function telaPapel(){
+    return '<div class="porta">' + marca() + '<h1>Pedidos do dia</h1>' +
+      '<p>Quem está usando este aparelho?</p>' +
+      '<div class="portas">' +
+      '<button class="portao" data-papel="jean"><b>Vou anotar pedidos</b>' +
+      '<span>Escolhe o cliente, lança as quantidades e manda pra autorização.</span></button>' +
+      '<button class="portao" data-papel="dona"><b>Vou autorizar emissão</b>' +
+      '<span>Confere os pedidos anotados e libera quais viram nota fiscal.</span></button>' +
+      '</div></div>';
+  }
+
+  function ligarPapel(){
+    Array.prototype.forEach.call(document.querySelectorAll('[data-papel]'), function(b){
+      b.addEventListener('click', function(){
+        papel = b.getAttribute('data-papel');
+        gravar(CHAVE_PAPEL, papel);
+        render();
+      });
+    });
+  }
+
+  function cabecalho(){
+    var quem = papel === 'dona' ? 'Autorizando' : 'Anotando pedidos';
+    var sub = papel === 'dona'
+      ? 'Confira o que o Jean anotou e libere o que pode virar nota.'
+      : 'Anote os pedidos aqui. A emissão sai depois, com a autorização da Tainara.';
+    return '<div class="topo">' + marca() + '<h1>Pedidos do dia</h1></div>' +
+      '<p class="sub">' + sub + '</p>' +
+      '<div class="papel"><span class="quem">' + esc(quem) + '</span>' +
+      '<button id="btnPapel">trocar</button></div>';
+  }
+
+  function avisoLeitura(){
+    return '<div class="aviso"><b>Esta página está aberta só para leitura</b>' +
+      'Dá pra montar tudo, mas não pra salvar aqui. Use o botão <b style="display:inline">Copiar</b> ' +
+      'e mande o texto — o formato já sai pronto.</div>';
+  }
+
+  // ---------- tela de quem anota ----------
+  function telaJean(){
+    return barraCorrecao() + blocoQuemLanca() + blocoCliente() + blocoProdutos() +
+           blocoFila() + blocoEsperando() + blocoHistorico();
+  }
+
+  function barraCorrecao(){
+    if(!substituindo) return '';
+    var p = ESTADO.pedidos.filter(function(x){ return x.id === substituindo; })[0];
+    return '<div class="corrigindo"><div><b>Corrigindo um pedido já enviado</b>' +
+      '<span>' + esc(p ? p.cliente.nome : '') + ' — ajuste o que estiver errado e toque em ' +
+      '“Salvar correção”. O pedido antigo é substituído.</span></div>' +
+      '<button class="btn miudo" id="btnCancelaCorr">Cancelar</button></div>';
+  }
+
+  function blocoEsperando(){
+    var lista = aguardando();
+    if(!lista.length) return '';
+    var h = '<div class="bloco"><p class="rot">Enviados, esperando a Tainara (' + lista.length + ')</p>' +
+      '<p class="vazio" style="padding:0 0 10px">Enquanto ela não autoriza, dá pra corrigir.</p>';
+    lista.slice().reverse().forEach(function(p){ h += cartaoPedido(p, {corrigir:true}); });
+    return h + '</div>';
+  }
+
+  function blocoQuemLanca(){
+    return '<div class="bloco"><p class="rot">Quem está lançando</p>' +
+      '<input class="campo" id="inNome" placeholder="Seu nome" value="' + esc(nome) + '"></div>';
+  }
+
+  function blocoCliente(){
+    var h = '<div class="bloco"><p class="rot">Cliente</p>';
+    if(clienteSel){
+      h += '<div class="escolhido"><div><b>' + esc(clienteSel.nome) + '</b>' +
+        '<span>' + esc(localDe(clienteSel)) + '</span></div>' +
+        '<button class="btn miudo" id="btnTrocar">Trocar</button></div>';
+    }else{
+      h += '<div class="busca"><input class="campo" id="inBusca" autocomplete="off" ' +
+        'placeholder="Digite parte do nome — ex.: lider castanheira" value="' + esc(termo) + '">' +
+        '<div class="lista" id="listaCli"></div></div>';
+    }
+    return h + '</div>';
+  }
+
+  function blocoProdutos(){
+    var h = '<div class="bloco"><p class="rot">Quantidades</p>';
+    ORDEM_GRUPOS.forEach(function(g){
+      var itens = GRUPOS[g];
+      if(!itens || !itens.length) return;
+      h += '<div class="grupo"><h3>' + esc(g) + '</h3>';
+      itens.forEach(function(p){
+        var q = quantidades[p.codigo] || '';
+        h += '<div class="item' + (q ? ' tem' : '') + '">' +
+          '<div><div class="nome">' + esc(rotuloCurto(p.descricao)) + '</div>' +
+          '<div class="preco">' + moeda(p.precoVenda) + ' / ' + esc(p.unidadeTributada || 'UN') + '</div></div>' +
+          '<input class="qtd" type="number" inputmode="numeric" min="0" step="1" ' +
+          'data-cod="' + p.codigo + '" value="' + esc(q) + '" aria-label="' + esc(p.descricao) + '"></div>';
+      });
+      h += '</div>';
+    });
+    return h + '<div class="acoes"><button class="btn principal" id="btnAdd">' +
+      (substituindo ? 'Salvar correção' : 'Adicionar à fila') + '</button>' +
+      '<span class="preco" style="font-size:14px" id="somaRascunho"></span></div></div>';
+  }
+
+  function totalRascunho(){
+    var t = 0;
+    Object.keys(quantidades).forEach(function(cod){
+      var p = PROD_POR_COD[cod];
+      if(p) t += (quantidades[cod] || 0) * p.precoVenda;
+    });
+    return t;
+  }
+
+  function mostrarSoma(){
+    var el = document.getElementById('somaRascunho');
+    if(!el) return;
+    var t = totalRascunho();
+    var n = Object.keys(quantidades).length;
+    el.textContent = t > 0 ? moeda(t) + ' em ' + n + (n === 1 ? ' produto' : ' produtos') : '';
+  }
+
+  function blocoFila(){
+    var h = '<div class="bloco"><p class="rot">Prontos para mandar (' + fila.length + ')</p>';
+    if(!fila.length) h += '<p class="vazio">Nada aqui ainda. Escolha o cliente, ponha as quantidades e toque em “Adicionar à fila”.</p>';
+    else fila.forEach(function(p){ h += cartaoPedido(p, {remover:true, editar:true}); });
+    return h + '</div>';
+  }
+
+  // ---------- tela de quem autoriza ----------
+  function telaDona(){
+    var esperando = aguardando();
+    var h = '<div class="bloco' + (esperando.length ? ' destaque' : '') + '">' +
+      '<p class="rot">Aguardando sua autorização (' + esperando.length + ')</p>';
+    if(!esperando.length){
+      h += '<p class="vazio">Nenhum pedido esperando. Quando o Jean mandar, aparece aqui.</p>';
+    }else{
+      var soma = esperando.reduce(function(s,p){ return s + totalPedido(p); }, 0);
+      h += '<p class="vazio" style="padding-bottom:12px">' + esperando.length +
+        (esperando.length === 1 ? ' pedido' : ' pedidos') + ' · ' + moeda(soma) + ' em produtos</p>';
+      esperando.forEach(function(p){ h += cartaoPedido(p, {decidir:true}); });
+      h += '<div class="acoes"><button class="btn miudo" id="btnTodos">Autorizar todos</button></div>';
+      h += areaExcluir();
+    }
+    return h + '</div>' + blocoHistorico();
+  }
+
+  // Excluir apaga o pedido de vez. Por isso não some na hora: fica listado aqui
+  // para conferência e só sai quando ela salva.
+  function areaExcluir(){
+    var fora = ESTADO.pedidos.filter(function(p){ return decisoes[p.id] === 'excluido'; });
+    if(!fora.length) return '';
+    var h = '<div class="lixeira"><p class="rot">Vai apagar de vez (' + fora.length + ')</p><ul>';
+    fora.forEach(function(p){
+      h += '<li>' + esc(p.cliente.nome) + ' <span>— ' + moeda(totalPedido(p)) +
+           (p.por ? ', lançado por ' + esc(p.por) : '') + '</span></li>';
+    });
+    return h + '</ul><p class="obs">Some da lista e do histórico quando você tocar em ' +
+      '“Salvar autorização”, e não dá pra voltar atrás. Se for só para não emitir, ' +
+      'use <b>Recusar</b> — aí o pedido fica registrado.</p></div>';
+  }
+
+  function blocoHistorico(){
+    var lista = ESTADO.pedidos.filter(function(p){ return p.status !== 'anotado'; });
+    lista = lista.slice().reverse();
+    if(!lista.length) return '';
+    var h = '<div class="bloco"><p class="rot">Histórico</p>';
+    lista.slice(0, 40).forEach(function(p){ h += cartaoPedido(p, {}); });
+    if(lista.length > 40) h += '<p class="vazio">e mais ' + (lista.length - 40) + ' pedidos anteriores.</p>';
+    return h + '</div>';
+  }
+
+  // ---------- cartão ----------
+  function cartaoPedido(p, op){
+    var d = decisoes[p.id];
+    var classe = 'pedido';
+    if(op.decidir){
+      classe += d === 'autorizado' ? ' vai-sim'
+              : d === 'recusado'   ? ' vai-nao'
+              : d === 'excluido'   ? ' vai-fora'
+              : ' pendendo';
+    }
+    var h = '<div class="' + classe + '"><div class="cab"><div>' +
+      '<div class="cli">' + esc(p.cliente.nome) + '</div>' +
+      '<div class="loc">' + esc(p.cliente.local) +
+      (p.por ? ' · ' + esc(p.por) : '') +
+      (p.enviadoEm ? ' · ' + esc(quandoBr(p.enviadoEm)) : '') +
+      '</div></div>' + selo(p, d) + '</div><ul>';
+    p.itens.forEach(function(i){
+      h += '<li><span>' + esc(i.desc) + '</span><b>' + i.qtd + '</b></li>';
+    });
+    h += '</ul>';
+    if(op.decidir){
+      h += seletorCfop(p) + linhasValor(p);
+    }else{
+      h += '<div class="total"><span>Produtos</span><span>' + moeda(totalPedido(p)) + '</span></div>';
+      if(p.cfop && p.cfop !== CFOP_PADRAO){
+        h += '<div class="nota">CFOP <b>' + esc(p.cfop) + '</b> — ' + esc(infoCfop(p.cfop).nome) + '</div>';
+      }
+    }
+    if(p.substitui) h += '<div class="nota">corrige um pedido enviado antes</div>';
+    if(p.nf) h += '<div class="nota">NF-e <b>' + esc(p.nf) + '</b>' + (p.chave ? ' · chave ' + esc(p.chave) : '') + '</div>';
+    if(p.mensagem) h += '<div class="nota">' + esc(p.mensagem) + '</div>';
+    if(op.remover || op.editar || op.corrigir){
+      h += '<div class="acoes">';
+      if(op.editar)  h += '<button class="btn miudo" data-edit="' + esc(p.id) + '">Editar</button>';
+      if(op.corrigir) h += '<button class="btn miudo" data-corr="' + esc(p.id) + '">Corrigir</button>';
+      if(op.remover) h += '<button class="btn miudo perigo" data-rem="' + esc(p.id) + '">Remover</button>';
+      h += '</div>';
+    }
+    if(op.decidir){
+      h += '<div class="acoes">' +
+        '<button class="btn miudo' + (d === 'autorizado' ? ' marcado' : '') + '" data-sim="' + esc(p.id) + '">Autorizar</button>' +
+        '<button class="btn miudo' + (d === 'recusado' ? ' marcado-nao' : '') + '" data-nao="' + esc(p.id) + '">Recusar</button>' +
+        '<button class="btn miudo perigo' + (d === 'excluido' ? ' marcado-nao' : '') + '" ' +
+        'data-fora="' + esc(p.id) + '" style="margin-left:auto">Excluir</button>' +
+        '</div>';
+    }
+    return h + '</div>';
+  }
+
+  function seletorCfop(p){
+    var atual = cfopDe(p);
+    var h = '<div class="cfop"><p class="rot">CFOP da nota</p><div class="opcoes">';
+    CFOPS.forEach(function(x){
+      h += '<button class="' + (x.c === atual ? 'ativo' : '') + '" ' +
+        'data-cfop="' + esc(p.id) + '|' + x.c + '">' + x.c +
+        '<small>' + esc(x.nome) + '</small></button>';
+    });
+    var info = infoCfop(atual);
+    return h + '</div><p class="explica"><b>' + esc(info.natOp) + '.</b> ' +
+      esc(info.resumo) + '</p></div>';
+  }
+
+  function linhasValor(p){
+    var info = infoCfop(cfopDe(p));
+    var prod = totalPedido(p);
+    var st = info.tributa ? stPedido(p) : 0;
+    return '<div class="linhas-valor">' +
+      '<div><span>Produtos</span><span>' + moeda(prod) + '</span></div>' +
+      '<div><span>ICMS-ST</span><span>' + (info.tributa ? moeda(st) : 'isento') + '</span></div>' +
+      '<div class="forte"><span>Total da nota</span><span>' + moeda(prod + st) + '</span></div>' +
+      '</div>';
+  }
+
+  function selo(p, decisao){
+    if(decisao === 'autorizado') return '<span class="selo autorizado">vai autorizar</span>';
+    if(decisao === 'recusado') return '<span class="selo erro">vai recusar</span>';
+    if(decisao === 'excluido') return '<span class="selo erro">vai apagar</span>';
+    var s = p.status || 'fila';
+    var txt = {
+      fila: 'na fila',
+      anotado: papel === 'dona' ? 'aguardando você' : 'com a Tainara',
+      autorizado: 'autorizado · vai emitir',
+      emitida: 'emitida',
+      recusado: 'recusado',
+      corrigido: 'corrigido · substituído',
+      erro: 'erro'
+    }[s] || s;
+    return '<span class="selo ' + s + '">' + txt + '</span>';
+  }
+
+  // ---------- barra ----------
+  function renderBarra(){
+    var b = document.getElementById('barra');
+    if(papel === 'dona'){
+      var chaves = Object.keys(decisoes);
+      var n = chaves.length;
+      var trocaCfop = Object.keys(cfops).length;
+      var pendentes = n + trocaCfop;
+      var apagar = chaves.filter(function(k){ return decisoes[k] === 'excluido'; }).length;
+      var rodape = !pendentes ? 'nada marcado ainda'
+        : apagar ? (apagar === 1 ? '1 será apagado de vez' : apagar + ' serão apagados de vez')
+        : trocaCfop ? (trocaCfop === 1 ? 'inclui 1 troca de CFOP' : 'inclui ' + trocaCfop + ' trocas de CFOP')
+        : 'toque em salvar';
+      b.innerHTML = '<div class="cont"><b>' + pendentes + (pendentes === 1 ? ' mudança' : ' mudanças') + '</b>' +
+        rodape + '</div>' +
+        '<div class="grupo-btn"><button class="btn principal" id="btnSalvarDec"' +
+        (pendentes && !somenteLeitura ? '' : ' disabled') + '>Salvar autorização</button></div>';
+      var bs = document.getElementById('btnSalvarDec');
+      if(bs) bs.addEventListener('click', salvarDecisoes);
+    }else{
+      var m = fila.length;
+      b.innerHTML = '<div class="cont"><b>' + m + (m === 1 ? ' pedido' : ' pedidos') + '</b>' +
+        (m ? 'pronto pra mandar' : 'na fila') + '</div>' +
+        '<div class="grupo-btn">' +
+        '<button class="btn miudo" id="btnCopiar"' + (m ? '' : ' disabled') + '>Copiar</button>' +
+        '<button class="btn principal" id="btnEnviar"' + (m && !somenteLeitura ? '' : ' disabled') + '>Mandar para autorização</button>' +
+        '</div>';
+      var bc = document.getElementById('btnCopiar'); if(bc) bc.addEventListener('click', copiar);
+      var be = document.getElementById('btnEnviar'); if(be) be.addEventListener('click', enviar);
+    }
+  }
+
+  // ---------- eventos ----------
+  function ligarEventos(){
+    var bp = document.getElementById('btnPapel');
+    if(bp) bp.addEventListener('click', function(){
+      papel = ''; gravar(CHAVE_PAPEL, ''); decisoes = {}; cfops = {}; render();
+    });
+
+    var inNome = document.getElementById('inNome');
+    if(inNome) inNome.addEventListener('input', function(){ nome = inNome.value; gravar(CHAVE_NOME, nome); });
+
+    var inBusca = document.getElementById('inBusca');
+    if(inBusca){
+      inBusca.addEventListener('input', function(){ termo = inBusca.value; desenharLista(); });
+      desenharLista();
+    }
+
+    var bt = document.getElementById('btnTrocar');
+    if(bt) bt.addEventListener('click', function(){ clienteSel = null; termo = ''; render(); });
+
+    Array.prototype.forEach.call(document.querySelectorAll('.qtd'), function(el){
+      el.addEventListener('input', function(){
+        var v = parseInt(el.value, 10);
+        var cod = el.getAttribute('data-cod');
+        if(!v || v < 0) delete quantidades[cod]; else quantidades[cod] = v;
+        el.closest('.item').classList.toggle('tem', !!quantidades[cod]);
+        mostrarSoma();
+      });
+    });
+    mostrarSoma();
+
+    var add = document.getElementById('btnAdd');
+    if(add) add.addEventListener('click', adicionar);
+
+    Array.prototype.forEach.call(document.querySelectorAll('[data-rem]'), function(el){
+      el.addEventListener('click', function(){
+        fila = fila.filter(function(p){ return p.id !== el.getAttribute('data-rem'); });
+        salvarFila(); render();
+      });
+    });
+
+    Array.prototype.forEach.call(document.querySelectorAll('[data-edit]'), function(el){
+      el.addEventListener('click', function(){
+        var id = el.getAttribute('data-edit');
+        var p = fila.filter(function(x){ return x.id === id; })[0];
+        if(p) carregarParaEdicao(p, 'fila');
+      });
+    });
+
+    Array.prototype.forEach.call(document.querySelectorAll('[data-corr]'), function(el){
+      el.addEventListener('click', function(){
+        var id = el.getAttribute('data-corr');
+        var p = ESTADO.pedidos.filter(function(x){ return x.id === id; })[0];
+        if(p) carregarParaEdicao(p, 'enviado');
+      });
+    });
+
+    var cc = document.getElementById('btnCancelaCorr');
+    if(cc) cc.addEventListener('click', function(){
+      substituindo = null; clienteSel = null; quantidades = {}; termo = ''; render();
+    });
+
+    Array.prototype.forEach.call(document.querySelectorAll('[data-sim]'), function(el){
+      el.addEventListener('click', function(){ marcar(el.getAttribute('data-sim'), 'autorizado'); });
+    });
+    Array.prototype.forEach.call(document.querySelectorAll('[data-nao]'), function(el){
+      el.addEventListener('click', function(){ marcar(el.getAttribute('data-nao'), 'recusado'); });
+    });
+    Array.prototype.forEach.call(document.querySelectorAll('[data-fora]'), function(el){
+      el.addEventListener('click', function(){ marcar(el.getAttribute('data-fora'), 'excluido'); });
+    });
+
+    Array.prototype.forEach.call(document.querySelectorAll('[data-cfop]'), function(el){
+      el.addEventListener('click', function(){
+        var partes = el.getAttribute('data-cfop').split('|');
+        var id = partes[0], c = partes[1];
+        var pedido = ESTADO.pedidos.filter(function(x){ return x.id === id; })[0];
+        var original = (pedido && pedido.cfop) || CFOP_PADRAO;
+        if(c === original) delete cfops[id]; else cfops[id] = c;
+        render();
+      });
+    });
+
+    var todos = document.getElementById('btnTodos');
+    if(todos) todos.addEventListener('click', function(){
+      aguardando().forEach(function(p){ decisoes[p.id] = 'autorizado'; });
+      render();
+    });
+  }
+
+  function marcar(id, valor){
+    if(decisoes[id] === valor) delete decisoes[id]; else decisoes[id] = valor;
+    render();
+  }
+
+  function desenharLista(){
+    var cx = document.getElementById('listaCli');
+    if(!cx) return;
+    var t = termo.trim().toLowerCase();
+    if(t.length < 2){ cx.innerHTML = ''; return; }
+    var palavras = t.split(/\s+/);
+    var achados = CLIENTES.filter(function(c){
+      var alvo = (c.nome + ' ' + (c.fantasia||'') + ' ' + (c.bairro||'') + ' ' + (c.cidade||'') + ' ' + (c.cpfcnpj||'')).toLowerCase();
+      return palavras.every(function(p){ return alvo.indexOf(p) >= 0; });
+    }).slice(0, 12);
+    if(!achados.length){ cx.innerHTML = '<div class="opt"><span>Nenhum cliente com esse nome no cadastro.</span></div>'; return; }
+    cx.innerHTML = achados.map(function(c){
+      return '<button class="opt" data-cod="' + c.codigo + '"><b>' + esc(rotuloCliente(c)) + '</b>' +
+        '<span>' + esc(localDe(c)) + '</span></button>';
+    }).join('');
+    Array.prototype.forEach.call(cx.querySelectorAll('.opt[data-cod]'), function(b){
+      b.addEventListener('click', function(){
+        var cod = parseInt(b.getAttribute('data-cod'), 10);
+        clienteSel = CLIENTES.filter(function(c){ return c.codigo === cod; })[0] || null;
+        render();
+      });
+    });
+  }
+
+  // Traz um pedido de volta para o formulário. Da fila, ele sai da fila (é o mesmo
+  // pedido sendo reescrito). Já enviado, fica marcado para ser substituído no envio.
+  function carregarParaEdicao(p, origem){
+    var foraDaLista = [];
+    quantidades = {};
+    p.itens.forEach(function(i){
+      if(ehVendavel(i.codigo)) quantidades[i.codigo] = i.qtd;
+      else foraDaLista.push(i.qtd + ' x ' + i.desc);
+    });
+    clienteSel = CLIENTES.filter(function(c){ return c.codigo === p.cliente.codigo; })[0] ||
+                 {codigo: p.cliente.codigo, nome: p.cliente.nome, local: p.cliente.local};
+    termo = '';
+    if(origem === 'fila'){
+      fila = fila.filter(function(x){ return x.id !== p.id; });
+      salvarFila();
+      substituindo = null;
+    }else{
+      substituindo = p.id;
+    }
+    render();
+    window.scrollTo({top:0, behavior:'smooth'});
+    if(foraDaLista.length){
+      alert('Estes itens não são mais lançados por aqui e saíram do pedido:\n\n' +
+            foraDaLista.join('\n') + '\n\nSe ainda precisar deles, fale com a Tainara.');
+    }
+  }
+
+  function adicionar(){
+    if(!clienteSel){ alert('Escolha o cliente primeiro.'); return; }
+    var itens = [];
+    Object.keys(quantidades).forEach(function(cod){
+      var p = PROD_POR_COD[cod];
+      if(p && quantidades[cod] > 0) itens.push({codigo:p.codigo, desc:p.descricao, qtd:quantidades[cod], preco:p.precoVenda});
+    });
+    if(!itens.length){ alert('Ponha a quantidade de pelo menos um produto.'); return; }
+    var novo = {
+      id: idNovo(),
+      cliente: {codigo: clienteSel.codigo, nome: clienteSel.nome, local: localDe(clienteSel)},
+      itens: itens,
+      por: (nome || '').trim(),
+      status: 'fila',
+      criadoEm: new Date().toISOString()
+    };
+    if(substituindo) novo.substitui = substituindo;
+    fila.push(novo);
+    salvarFila();
+    substituindo = null; clienteSel = null; quantidades = {}; termo = '';
+    render();
+    window.scrollTo({top:0, behavior:'smooth'});
+  }
+
+  function textoResumo(){
+    var linhas = [];
+    fila.forEach(function(p){
+      linhas.push(p.cliente.nome + '  [cod ' + p.cliente.codigo + ']');
+      p.itens.forEach(function(i){ linhas.push('  ' + i.qtd + ' x ' + i.desc + '  [cod ' + i.codigo + ']'); });
+      if(p.por) linhas.push('  lançado por ' + p.por);
+      linhas.push('');
+    });
+    return linhas.join('\n').trim();
+  }
+
+  // ---------- publicar ----------
+  function documentoCompleto(estado){
+    var css = document.getElementById('css').textContent;
+    var js = document.getElementById('app').textContent;
+    var json = JSON.stringify(estado).replace(/</g, '\\u003c');
+    return '<!doctype html>\n<html lang="pt-BR">\n<head>\n' +
+      '<meta charset="utf-8">\n' +
+      '<meta name="viewport" content="width=device-width,initial-scale=1">\n' +
+      '<title>Pedidos Vivenda dos Sucos</title>\n' +
+      '<style id="css">' + css + '</style>\n' +
+      '</head>\n<body>\n' +
+      '<div class="env" id="raiz"></div>\n' +
+      BARRA_HTML + '\n' +
+      '<script type="application/json" id="estado">' + json + FIM + '\n' +
+      '<script id="app">' + js + FIM + '\n' +
+      '</body>\n</html>';
+  }
+
+  async function usarArtifact(){
+    if(!window.claude || typeof window.claude.use !== 'function') return null;
+    try{ return await window.claude.use('artifact'); }catch(e){ return null; }
+  }
+
+  function tratarFalha(e, btn, rotulo){
+    btn.textContent = rotulo;
+    btn.disabled = false;
+    if(e && (e.code === 'not_writer' || e.code === 'not_granted' || e.code === 'consent_required' || e.code === 'capability_disabled')){
+      somenteLeitura = true; render(); return;
+    }
+    if(e && e.code === 'conflict') return;               // a página já recarrega na versão vencedora
+    if(e && e.code === 'rate_limited'){ alert('Muitos envios seguidos. Espere alguns segundos e tente de novo.'); return; }
+    alert('Não deu pra salvar agora. Tente de novo em instantes.');
+  }
+
+  async function publicar(estado, btn, rotulo){
+    var art = await usarArtifact();
+    if(!art){ somenteLeitura = true; btn.textContent = rotulo; render(); return; }
+    try{ await art.publish(documentoCompleto(estado)); }
+    catch(e){ tratarFalha(e, btn, rotulo); }
+  }
+
+  async function enviar(){
+    if(!fila.length) return;
+    var btn = document.getElementById('btnEnviar');
+    var rotulo = btn.textContent;
+    btn.disabled = true; btn.textContent = 'Mandando…';
+    var novos = fila.map(function(p){
+      var c = JSON.parse(JSON.stringify(p));
+      c.status = 'anotado';
+      c.enviadoEm = new Date().toISOString();
+      return c;
+    });
+    // Um pedido que corrige outro aposenta o antigo — mas só se o antigo ainda
+    // estiver esperando. Se a Tainara autorizou nesse meio-tempo, a correção
+    // chegou tarde: ela entra sinalizada, para ninguém emitir os dois.
+    var porId = {};
+    ESTADO.pedidos.forEach(function(p){ porId[p.id] = p; });
+    var trocados = {};
+    novos.forEach(function(n){
+      if(!n.substitui) return;
+      var velho = porId[n.substitui];
+      if(velho && velho.status === 'anotado') trocados[n.substitui] = 1;
+      else n.mensagem = 'Atenção: o pedido que esta correção substituiria já saiu da espera. Confira antes de emitir.';
+    });
+    var anteriores = ESTADO.pedidos.map(function(p){
+      if(trocados[p.id]){
+        var c = JSON.parse(JSON.stringify(p));
+        c.status = 'corrigido';
+        return c;
+      }
+      return p;
+    });
+    await publicar({versao:(ESTADO.versao||0)+1, pedidos:anteriores.concat(novos)}, btn, rotulo);
+  }
+
+  async function salvarDecisoes(){
+    if(!Object.keys(decisoes).length && !Object.keys(cfops).length) return;
+    var btn = document.getElementById('btnSalvarDec');
+    var rotulo = btn.textContent;
+    btn.disabled = true; btn.textContent = 'Salvando…';
+    var agora = new Date().toISOString();
+    var pedidos = ESTADO.pedidos.filter(function(p){
+      // apagar de vez só vale para pedido ainda esperando; nota já emitida
+      // é documento fiscal e o registro dela fica
+      return !(decisoes[p.id] === 'excluido' && p.status === 'anotado');
+    }).map(function(p){
+      if(p.status !== 'anotado') return p;
+      var mudouStatus = decisoes[p.id] && decisoes[p.id] !== 'excluido';
+      var mudouCfop = !!cfops[p.id];
+      if(!mudouStatus && !mudouCfop) return p;
+      var c = JSON.parse(JSON.stringify(p));
+      if(mudouCfop) c.cfop = cfops[p.id];
+      if(mudouStatus){ c.status = decisoes[p.id]; c.decididoEm = agora; }
+      return c;
+    });
+    await publicar({versao:(ESTADO.versao||0)+1, pedidos:pedidos}, btn, rotulo);
+  }
+
+  async function copiar(){
+    var t = textoResumo();
+    if(!t) return;
+    var btn = document.getElementById('btnCopiar');
+    try{
+      await navigator.clipboard.writeText(t);
+      btn.textContent = 'Copiado';
+      setTimeout(function(){ btn.textContent = 'Copiar'; }, 1800);
+    }catch(e){ window.prompt('Copie o texto abaixo:', t); }
+  }
+
+  render();
+})();
+</script>
