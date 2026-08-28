@@ -20,6 +20,24 @@ export default async function handler(req, res) {
     node: process.version,
   };
 
+  // Forma do token, sem revelar o conteúdo. O personal_token do eGestor é um JWT
+  // de 3 partes separadas por ponto; se veio truncado ou com espaço, aparece aqui.
+  const t = process.env.EGESTOR_PERSONAL_TOKEN;
+  if (t) {
+    const partes = t.split('.');
+    let subdominio = null;
+    try {
+      subdominio = JSON.parse(Buffer.from(partes[1] || '', 'base64').toString()).subdominio || null;
+    } catch { /* payload ilegível */ }
+    corpo.token = {
+      tamanho: t.length,
+      partes: partes.length,
+      comecaComEy: t.slice(0, 2) === 'ey',
+      temEspacoOuQuebra: /\s/.test(t),
+      subdominio, // "rtkalume" confirma que é o token certo
+    };
+  }
+
   // o teste contra o eGestor gasta chamada de API: só para quem está logado
   const sessao = lerSessao(req);
   if (sessao) {
