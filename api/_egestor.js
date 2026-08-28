@@ -84,42 +84,68 @@ export function cfopPara(nomeCliente, papel) {
 }
 
 // O CFOP da nota vem do GRUPO DE TRIBUTOS da linha do produto na venda, e esse
-// grupo só se troca pela tela do eGestor (a API recusa `codConfigTrib`).
+// grupo só se troca pela tela do eGestor (a API recusa `codConfigTrib` no POST).
 //
-// Grupos cadastrados: 1 = Tributação padrão (x401), 2 = REMESSA DE MERCADORIA (x917).
-//
-// Então:
-//   5401 -> grupo padrão, emite direto.
-//   5917 -> emite direto SE o grupo REMESSA já estiver aplicado na venda. O sinal
-//           é o ICMS-ST: o grupo REMESSA zera (ICMS CST 40). Se ainda houver ST,
-//           o grupo não foi trocado e a nota sairia 5401 — melhor barrar.
-//   5113 -> não existe grupo com CFOP x113 cadastrado; enquanto não existir, a
-//           nota tem que sair pela tela.
-export function grupoAplicado(cfop, produtos) {
-  const temST = (produtos || []).some((p) => Number(p.valorST) > 0);
-  if (String(cfop) === '5917') return !temST;
-  if (String(cfop) === '5401') return temST || !(produtos || []).length;
-  return false;
+// Grupos cadastrados nesta conta:
+//   1 - Tributação padrão            -> x401  (é o default de todo produto)
+//   2 - REMESSA DE MERCADORIA        -> x917  (ICMS 40, PIS/COFINS 07, sem imposto)
+//   3 - VENDA REMETIDA ANTERIORMENTE -> x113  (tributa igual ao grupo 1)
+export const GRUPO_DE_CFOP = {
+  5401: '1 - Tributação padrão',
+  5917: '2 - REMESSA DE MERCADORIA',
+  5113: '3 - VENDA REMETIDA ANTERIORMENTE',
+};
+
+// Lê o CFOP que está DE FATO aplicado em cada linha, pelo relatório de produtos
+// vendidos — o único lugar da API que expõe isso. Uma chamada cobre a fila toda.
+export async function cfopsAplicados(diasParaTras = 90) {
+  const fmt = (d) => d.toLocaleDateString('sv-SE', { timeZone: 'America/Belem' });
+  const linhas = await eg('POST', '/relatorios/detalhesProdutosVendidos', {
+    tipoData: 'dtCad',
+    de: fmt(new Date(Date.now() - diasParaTras * 24 * 3600 * 1000)),
+    ate: fmt(new Date()),
+    tags: TAG_APP,
+    mostrarCFOP: true,
+    mostrarGrupoTrib: true,
+    mostrarAbertas: true,
+  });
+
+  const porVenda = {};
+  (Array.isArray(linhas) ? linhas : []).forEach((l) => {
+    const v = String(l.venda);
+    if (!porVenda[v]) porVenda[v] = [];
+    porVenda[v].push(String(l.cfop || ''));
+  });
+  return porVenda;
 }
 
-export function podeEmitirPelaApi(cfop, produtos) {
-  const c = String(cfop);
-  if (c === '5401') return { pode: true };
-  if (c === '5917') {
-    if (grupoAplicado(c, produtos)) return { pode: true };
-    return {
-      pode: false,
-      motivo:
-        'Antes de autorizar, troque o grupo de tributos para "2 - REMESSA DE MERCADORIA" ' +
-        'na engrenagem ao lado do produto, dentro do orçamento no eGestor. ' +
-        'Do jeito que está, a nota sairia com CFOP 5401.',
-    };
+// O relatório devolve o CFOP no formato "x401"; o x é o dígito que varia por
+// destino (5 dentro do estado). Comparamos só o sufixo.
+export function podeEmitirPelaApi(cfopEsperado, cfopsDaVenda) {
+  const esperado = String(cfopEsperado);
+  const alvo = 'x' + esperado.slice(1);
+  const linhas = cfopsDaVenda || [];
+
+  if (!linhas.length) {
+    return { pode: false, motivo: 'Não consegui ler o grupo de tributos desta venda. Confira no eGestor antes de emitir.' };
   }
+
+  const aplicado = linhas[0];
+  const uniforme = linhas.every((c) => c === aplicado);
+
+  if (!uniforme) {
+    return { pode: false, motivo: 'Os produtos desta venda estão em grupos de tributos diferentes. Deixe todos no mesmo grupo antes de autorizar.' };
+  }
+  if (aplicado === alvo) return { pode: true, cfopAplicado: aplicado };
+
+  const grupo = GRUPO_DE_CFOP[esperado];
   return {
     pode: false,
+    cfopAplicado: aplicado,
     motivo:
-      `Não existe grupo de tributos com CFOP ${c} cadastrado no eGestor, ` +
-      'então esta nota precisa sair pela tela (Fiscal > NF-e > Nova).',
+      `Esta venda está no grupo de tributos que gera CFOP ${aplicado.replace('x', '5')}, ` +
+      `mas deveria sair ${esperado}. No eGestor, abra o orçamento, clique na engrenagem ao ` +
+      `lado de cada produto e troque o grupo para "${grupo}". Depois volte e autorize.`,
   };
 }
 

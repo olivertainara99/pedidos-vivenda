@@ -8,7 +8,7 @@
 // nem de natureza da operação, então a nota sairia como 5401. Esses ficam como
 // venda pronta, para emitir pela tela do eGestor.
 
-import { eg, erro, montarObs, lerObs, podeEmitirPelaApi, TAG_APP } from './_egestor.js';
+import { eg, erro, montarObs, lerObs, podeEmitirPelaApi, cfopsAplicados, TAG_APP } from './_egestor.js';
 import { exigir } from './_sessao.js';
 
 export default async function handler(req, res) {
@@ -45,11 +45,13 @@ export default async function handler(req, res) {
     // O CFOP foi decidido pela regra quando o pedido nasceu — não vem do navegador.
     const escolhido = antes.cfop;
 
-    // O CFOP sai do grupo de tributos da linha do produto. Se ele ainda não foi
-    // trocado, a nota sairia errada — então barramos ANTES de converter em venda,
-    // para o pedido continuar na fila e poder ser corrigido.
-    const veredito = podeEmitirPelaApi(escolhido, venda.produtos);
-    if (!veredito.pode && escolhido === '5917') {
+    // O CFOP sai do grupo de tributos da linha do produto. Conferimos o grupo que
+    // está DE FATO aplicado antes de qualquer coisa: se não bate com o esperado,
+    // a nota sairia com o CFOP errado. Barramos antes de converter em venda, para
+    // o pedido continuar na fila e poder ser corrigido.
+    const mapa = await cfopsAplicados();
+    const veredito = podeEmitirPelaApi(escolhido, mapa[String(cod)]);
+    if (!veredito.pode) {
       throw erro(409, veredito.motivo);
     }
 
@@ -59,17 +61,7 @@ export default async function handler(req, res) {
       campoAdicional1: montarObs({ por: antes.por, cfop: escolhido, nota: 'AUTORIZADO' }),
     });
 
-    // 2) CFOP sem grupo de tributos cadastrado: a venda fica pronta e a nota sai pela tela
-    if (!veredito.pode) {
-      return res.status(200).json({
-        resultado: 'aguardando-tela',
-        codigo: cod,
-        cfop: escolhido,
-        aviso: `Venda ${cod} pronta no eGestor. ${veredito.motivo}`,
-      });
-    }
-
-    // 3) padrão 5401: emite de verdade
+    // 2) grupo conferido: emite de verdade, com o CFOP que a regra definiu
     const nota = await eg('POST', `/vendas/${cod}/gerarNfe`, { enviar: true, contigOffline: false });
 
     const autorizada = nota && (nota.autorizada === true || Number(nota.cStat) === 100);

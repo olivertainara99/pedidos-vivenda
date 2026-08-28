@@ -3,7 +3,7 @@
 // POST   cria (Jean)
 // DELETE apaga um (Tainara)
 
-import { eg, egTudo, erro, montarObs, lerObs, cfopPara, podeEmitirPelaApi, TAG_APP, COD_VENDEDOR } from './_egestor.js';
+import { eg, egTudo, erro, montarObs, lerObs, cfopPara, podeEmitirPelaApi, cfopsAplicados, TAG_APP, COD_VENDEDOR } from './_egestor.js';
 import { exigir } from './_sessao.js';
 
 const MAX_DETALHAR = 30;
@@ -37,6 +37,10 @@ async function listar(req, res) {
 
   const emOrdem = resumo.sort((a, b) => b.codigo - a.codigo).slice(0, MAX_DETALHAR);
 
+  // uma chamada só cobre a fila toda
+  let cfopsPorVenda = {};
+  try { cfopsPorVenda = await cfopsAplicados(); } catch { /* sem isso o app avisa que não leu */ }
+
   const pedidos = [];
   for (const r of emOrdem) {
     const d = await eg('GET', `/vendas/${r.codigo}`);
@@ -56,7 +60,7 @@ async function listar(req, res) {
       recusado: obs.recusado,
       // o CFOP depende do grupo de tributos da linha, que só se troca pela tela;
       // avisamos aqui para ela ver antes de executar, não só na hora do erro
-      emissao: podeEmitirPelaApi(obs.cfop, d.produtos),
+      emissao: podeEmitirPelaApi(obs.cfop, cfopsPorVenda[String(d.codigo)]),
       totalST: (d.produtos || []).reduce((s, p) => s + (Number(p.valorST) || 0), 0),
       dtCad: d.dtCad || d.dtVenda,
       publicURL: d.publicURL || null,
