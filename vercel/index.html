@@ -189,7 +189,9 @@ input,button,select{font:inherit; color:inherit}
     nome: '',
     decisoes: {},        // codigo -> 'autorizar' | 'recusar' | 'excluir'
     papelLogin: '',      // quem a pessoa disse que é, na tela de entrada
-    aba: 'autorizar',    // só para a Tainara: 'autorizar' ou 'lancar'
+    aba: 'autorizar',    // 'autorizar' (só Tainara) | 'lancar' | 'hoje'
+    hoje: [],            // pedidos do dia, com o desfecho de cada um
+    carregandoHoje: false,
     confirmando: false,
     ocupado: false,
     erro: '',
@@ -246,9 +248,11 @@ input,button,select{font:inherit; color:inherit}
   function render(){
     var raiz = el('raiz');
     if(!estado.papel){ raiz.innerHTML = telaLogin(); el('barra').innerHTML = ''; ligarLogin(); return; }
-    var miolo = estado.papel === 'dona'
-      ? abas() + (estado.aba === 'lancar' ? telaJean() : telaDona())
-      : telaJean();
+    var miolo = abas() + (
+      estado.aba === 'hoje' ? telaHoje()
+      : estado.aba === 'autorizar' && estado.papel === 'dona' ? telaDona()
+      : telaJean()
+    );
     raiz.innerHTML = '<div class="env">' + cabecalho() +
       (estado.erro ? '<div class="aviso"><b>Não deu certo</b>' + esc(estado.erro) + '</div>' : '') +
       miolo + '</div>';
@@ -277,11 +281,14 @@ input,button,select{font:inherit; color:inherit}
   }
 
   function abas(){
-    return '<div class="abas">' +
-      '<button class="' + (estado.aba === 'autorizar' ? 'ativa' : '') + '" data-aba="autorizar">' +
-        'Autorizar' + (estado.pedidos.length ? ' (' + estado.pedidos.length + ')' : '') + '</button>' +
-      '<button class="' + (estado.aba === 'lancar' ? 'ativa' : '') + '" data-aba="lancar">Lançar pedido</button>' +
-      '</div>';
+    var itens = estado.papel === 'dona'
+      ? [['autorizar', 'Autorizar' + (estado.pedidos.length ? ' (' + estado.pedidos.length + ')' : '')],
+         ['lancar', 'Lançar'],
+         ['hoje', 'Hoje']]
+      : [['lancar', 'Lançar pedido'], ['hoje', 'Enviados hoje']];
+    return '<div class="abas">' + itens.map(function(i){
+      return '<button class="' + (estado.aba === i[0] ? 'ativa' : '') + '" data-aba="' + i[0] + '">' + i[1] + '</button>';
+    }).join('') + '</div>';
   }
 
   function cabecalho(){
@@ -362,6 +369,44 @@ input,button,select{font:inherit; color:inherit}
       });
     }
     return h + '</div>';
+  }
+
+  // ---------- histórico do dia ----------
+  function telaHoje(){
+    if(estado.carregandoHoje) return '<div class="bloco"><p class="vazio">Buscando os pedidos de hoje…</p></div>';
+    var lista = estado.hoje;
+    if(!lista.length){
+      return '<div class="bloco"><p class="rot">Enviados hoje</p>' +
+        '<p class="vazio">Nenhum pedido enviado hoje ainda.</p>' +
+        '<div class="acoes"><button class="btn miudo" id="btnHoje">Atualizar</button></div></div>';
+    }
+    var soma = lista.reduce(function(s,p){ return s + p.total; }, 0);
+    var h = '<div class="bloco"><p class="rot">Enviados hoje (' + lista.length + ')</p>' +
+      '<p class="vazio" style="padding:0 0 12px">' + moeda(soma) + ' em produtos</p>';
+    lista.forEach(function(p){
+      h += '<div class="pedido"><div class="cab"><div>' +
+        '<div class="cli">' + esc(p.cliente) + '</div>' +
+        '<div class="loc">venda ' + p.codigo + ' · CFOP ' + esc(p.cfop) +
+          (p.quando ? ' · ' + esc(horaDe(p.quando)) : '') + '</div>' +
+        '</div><span class="selo ' + seloDoEstado(p.estado) + '">' + esc(rotuloEstado(p.estado)) + '</span></div><ul>';
+      p.itens.forEach(function(i){ h += '<li><span>' + esc(i.desc) + '</span><b>' + i.qtd + '</b></li>'; });
+      h += '</ul><div class="total"><span>Produtos</span><span>' + moeda(p.total) + '</span></div>' +
+        '<div class="nota">' + esc(p.detalhe) + '</div></div>';
+    });
+    return h + '<div class="acoes"><button class="btn miudo" id="btnHoje">Atualizar</button></div></div>';
+  }
+
+  function rotuloEstado(e){
+    return {aguardando:'aguardando', autorizada:'autorizada', emitida:'emitida',
+            cancelada:'cancelada', rascunho:'rascunho'}[e] || e;
+  }
+  function seloDoEstado(e){
+    return {aguardando:'anotado', autorizada:'autorizado', emitida:'emitida',
+            cancelada:'erro', rascunho:'fila'}[e] || 'fila';
+  }
+  function horaDe(s){
+    var m = String(s).match(/(\d{2}):(\d{2})/);
+    return m ? m[1] + ':' + m[2] : '';
   }
 
   // ---------- Tainara ----------
@@ -482,6 +527,7 @@ input,button,select{font:inherit; color:inherit}
 
   function renderBarra(){
     var b = el('barra');
+    if(estado.aba === 'hoje'){ b.innerHTML = ''; return; }
     if(estado.papel === 'dona' && estado.aba === 'autorizar'){
       var c = contas();
       b.innerHTML = '<div class="cont"><b>' + c.total + (c.total === 1 ? ' mudança' : ' mudanças') + '</b>' +
@@ -584,7 +630,11 @@ input,button,select{font:inherit; color:inherit}
       estado.aba = elm.getAttribute('data-aba');
       estado.confirmando = false;
       render();
+      if(estado.aba === 'hoje') carregarHoje();
     });
+
+    var bh = el('btnHoje');
+    if(bh) bh.addEventListener('click', carregarHoje);
 
     var todos = el('btnTodos');
     if(todos) todos.addEventListener('click', function(){
@@ -723,6 +773,16 @@ input,button,select{font:inherit; color:inherit}
   }
 
   // ---------- carga ----------
+  async function carregarHoje(){
+    estado.carregandoHoje = true; estado.erro = ''; render();
+    try{
+      var r = await api('/api/historico');
+      estado.hoje = r.pedidos || [];
+    }catch(e){ estado.erro = e.message; }
+    estado.carregandoHoje = false;
+    render();
+  }
+
   async function carregarPedidos(){
     try{
       var r = await api('/api/pedidos');
@@ -735,6 +795,7 @@ input,button,select{font:inherit; color:inherit}
   async function iniciar(){
     try{ estado.nome = localStorage.getItem('vds_nome') || ''; }catch(e){}
     estado.erro = '';
+    if(estado.papel !== 'dona') estado.aba = 'lancar';
     render();
     try{
       estado.catalogo = await api('/api/catalogo');
