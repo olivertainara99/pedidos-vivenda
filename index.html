@@ -368,7 +368,9 @@ input,button,select{font:inherit; color:inherit}
     var classe = 'pedido ' + (d === 'autorizar' ? 'vai-sim' : d === 'recusar' ? 'vai-nao' : d === 'excluir' ? 'vai-fora' : 'pendendo');
     var atual = cfopDe(p);
     var info = infoCfop(atual);
-    var st = info.tributa ? stPedido(p) : 0;
+    // o ST vem calculado pelo eGestor, não estimado aqui: ele reflete o grupo
+    // de tributos que está de fato aplicado na venda
+    var st = typeof p.totalST === 'number' ? p.totalST : (info.tributa ? stPedido(p) : 0);
 
     var h = '<div class="' + classe + '"><div class="cab"><div>' +
       '<div class="cli">' + esc(p.cliente.nome) + '</div>' +
@@ -377,9 +379,12 @@ input,button,select{font:inherit; color:inherit}
     p.itens.forEach(function(i){ h += '<li><span>' + esc(i.desc) + '</span><b>' + i.qtd + '</b></li>'; });
     h += '</ul>';
 
+    var em = p.emissao || {pode:true};
     h += '<div class="cfop"><p class="rot">CFOP ' + esc(atual) + ' · ' + esc(info.nome) +
-      (info.automatico ? '' : ' <span class="marcaTela">nota pela tela</span>') + '</p>' +
-      '<p class="explica"><b>' + esc(info.natOp) + '.</b> ' + esc(info.resumo) + '</p></div>';
+      (em.pode ? '' : ' <span class="marcaTela">precisa de ajuste</span>') + '</p>' +
+      '<p class="explica"><b>' + esc(info.natOp) + '.</b> ' + esc(info.resumo) + '</p>' +
+      (em.pode ? '' : '<p class="explica" style="color:var(--perigo)">' + esc(em.motivo) + '</p>') +
+      '</div>';
 
     h += '<div class="linhas-valor">' +
       '<div><span>Produtos</span><span>' + moeda(p.totalProdutos) + '</span></div>' +
@@ -405,7 +410,7 @@ input,button,select{font:inherit; color:inherit}
     var emitir = [], tela = [], recusar = [], apagar = [];
     estado.pedidos.forEach(function(p){
       var d = estado.decisoes[p.codigo];
-      if(d === 'autorizar'){ (infoCfop(cfopDe(p)).automatico ? emitir : tela).push(p); }
+      if(d === 'autorizar'){ ((p.emissao && p.emissao.pode !== false) ? emitir : tela).push(p); }
       else if(d === 'recusar') recusar.push(p);
       else if(d === 'excluir') apagar.push(p);
     });
@@ -419,8 +424,10 @@ input,button,select{font:inherit; color:inherit}
     var h = '<div class="confirma"><h3>Confere antes de eu executar</h3><ul>';
     if(c.emitir.length) h += '<li><b class="alerta">' + c.emitir.length + ' nota(s) fiscal(is) serão emitidas agora</b> pela API, em produção: ' +
       c.emitir.map(function(p){ return esc(p.cliente.nome) + ' (' + moeda(p.totalProdutos + stPedido(p)) + ')'; }).join('; ') + '</li>';
-    if(c.tela.length) h += '<li>' + c.tela.length + ' vira(m) venda com CFOP fora do padrão e ficam para você emitir pela tela do eGestor: ' +
-      c.tela.map(function(p){ return esc(p.cliente.nome) + ' (CFOP ' + cfopDe(p) + ')'; }).join('; ') + '</li>';
+    if(c.tela.length) h += '<li><b>' + c.tela.length + ' não sai(em) automática(s)</b> — ' +
+      c.tela.map(function(p){ return esc(p.cliente.nome) + ' (CFOP ' + cfopDe(p) + ')'; }).join('; ') +
+      '. Veja o aviso em vermelho no cartão: se for troca de grupo de tributos, faça no eGestor e volte aqui — ' +
+      'aí a nota sai sozinha.</li>';
     if(c.recusar.length) h += '<li>' + c.recusar.length + ' recusado(s) — ficam registrados como orçamento.</li>';
     if(c.apagar.length) h += '<li><b class="alerta">' + c.apagar.length + ' apagado(s) de vez</b>, sem volta.</li>';
     h += '</ul><div class="acoes"><button class="btn principal" id="btnConfirmar">Confirmar e executar</button>' +

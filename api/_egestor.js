@@ -83,9 +83,44 @@ export function cfopPara(nomeCliente, papel) {
   return papel === 'dona' ? '5113' : '5917';
 }
 
-// Só o 5401 sai pela API: ela não define natureza da operação.
-export function saiSozinha(cfop) {
-  return String(cfop) === '5401';
+// O CFOP da nota vem do GRUPO DE TRIBUTOS da linha do produto na venda, e esse
+// grupo só se troca pela tela do eGestor (a API recusa `codConfigTrib`).
+//
+// Grupos cadastrados: 1 = Tributação padrão (x401), 2 = REMESSA DE MERCADORIA (x917).
+//
+// Então:
+//   5401 -> grupo padrão, emite direto.
+//   5917 -> emite direto SE o grupo REMESSA já estiver aplicado na venda. O sinal
+//           é o ICMS-ST: o grupo REMESSA zera (ICMS CST 40). Se ainda houver ST,
+//           o grupo não foi trocado e a nota sairia 5401 — melhor barrar.
+//   5113 -> não existe grupo com CFOP x113 cadastrado; enquanto não existir, a
+//           nota tem que sair pela tela.
+export function grupoAplicado(cfop, produtos) {
+  const temST = (produtos || []).some((p) => Number(p.valorST) > 0);
+  if (String(cfop) === '5917') return !temST;
+  if (String(cfop) === '5401') return temST || !(produtos || []).length;
+  return false;
+}
+
+export function podeEmitirPelaApi(cfop, produtos) {
+  const c = String(cfop);
+  if (c === '5401') return { pode: true };
+  if (c === '5917') {
+    if (grupoAplicado(c, produtos)) return { pode: true };
+    return {
+      pode: false,
+      motivo:
+        'Antes de autorizar, troque o grupo de tributos para "2 - REMESSA DE MERCADORIA" ' +
+        'na engrenagem ao lado do produto, dentro do orçamento no eGestor. ' +
+        'Do jeito que está, a nota sairia com CFOP 5401.',
+    };
+  }
+  return {
+    pode: false,
+    motivo:
+      `Não existe grupo de tributos com CFOP ${c} cadastrado no eGestor, ` +
+      'então esta nota precisa sair pela tela (Fiscal > NF-e > Nova).',
+  };
 }
 
 // ---- observações do pedido: quem lançou e qual CFOP ----

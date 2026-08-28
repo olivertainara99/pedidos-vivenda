@@ -3,7 +3,7 @@
 // POST   cria (Jean)
 // DELETE apaga um (Tainara)
 
-import { eg, egTudo, erro, montarObs, lerObs, cfopPara, TAG_APP, COD_VENDEDOR } from './_egestor.js';
+import { eg, egTudo, erro, montarObs, lerObs, cfopPara, podeEmitirPelaApi, TAG_APP, COD_VENDEDOR } from './_egestor.js';
 import { exigir } from './_sessao.js';
 
 const MAX_DETALHAR = 30;
@@ -54,6 +54,10 @@ async function listar(req, res) {
       cfop: obs.cfop,
       por: obs.por,
       recusado: obs.recusado,
+      // o CFOP depende do grupo de tributos da linha, que só se troca pela tela;
+      // avisamos aqui para ela ver antes de executar, não só na hora do erro
+      emissao: podeEmitirPelaApi(obs.cfop, d.produtos),
+      totalST: (d.produtos || []).reduce((s, p) => s + (Number(p.valorST) || 0), 0),
       dtCad: d.dtCad || d.dtVenda,
       publicURL: d.publicURL || null,
     });
