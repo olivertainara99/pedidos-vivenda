@@ -137,6 +137,8 @@ O CFOP escolhido e quem lançou ficam em `customizado.xCampo1` ("Observações g
 | aba | quem vê | o que faz |
 |---|---|---|
 | **Lançar pedido** | Jean e Tainara | escolhe cliente, quantidades, monta a fila e manda |
+
+A fila fica no **aparelho** (`localStorage`, chave `vds_fila_<papel>`), não no servidor. Isso é de propósito: o Jean monta ao longo do dia, fecha o navegador quantas vezes quiser, e só manda no fim. Consequência a lembrar: **a fila não atravessa aparelhos** — o que ele lançar no celular não aparece no computador. Ao reabrir, os preços são reconferidos contra o catálogo, caso o pedido tenha virado o dia.
 | **Autorizar (n)** | só Tainara | confere, autoriza/recusa/exclui — é onde a nota é emitida |
 | **Histórico** | Jean e Tainara | últimos 30 dias, agrupado por data, com o desfecho de cada pedido |
 
