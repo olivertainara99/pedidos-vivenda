@@ -3,7 +3,7 @@
 // POST   cria (Jean)
 // DELETE apaga um (Tainara)
 
-import { eg, egTudo, erro, montarObs, lerObs, TAG_APP, COD_VENDEDOR } from './_egestor.js';
+import { eg, egTudo, erro, montarObs, lerObs, cfopPara, TAG_APP, COD_VENDEDOR } from './_egestor.js';
 import { exigir } from './_sessao.js';
 
 const MAX_DETALHAR = 30;
@@ -74,6 +74,11 @@ async function criar(req, res, sessao) {
   if (!codContato) throw erro(400, 'Escolha o cliente.');
   if (!itens.length) throw erro(400, 'Ponha a quantidade de pelo menos um produto.');
 
+  // o CFOP sai da regra, a partir do cliente e de quem está lançando
+  const contato = await eg('GET', `/contatos/${codContato}`);
+  if (!contato || !contato.nome) throw erro(400, 'Cliente não encontrado no cadastro.');
+  const cfop = cfopPara(contato.nome, sessao.papel);
+
   // preços vêm do cadastro no momento do lançamento, nunca do navegador
   const catalogo = await egTudo('/produtos?fields=codigo,descricao,precoVenda');
   const porCod = new Map(catalogo.map((p) => [Number(p.codigo), p]));
@@ -94,11 +99,11 @@ async function criar(req, res, sessao) {
     dtVenda: hoje(),
     situacao: 10, // Orçamento: ainda não é venda
     tags: [TAG_APP],
-    customizado: { xCampo1: montarObs({ por, cfop: '5401' }) },
+    customizado: { xCampo1: montarObs({ por, cfop }) },
     produtos,
   });
 
-  return res.status(201).json({ codigo: criado.codigo, valorTotal: criado.valorTotal });
+  return res.status(201).json({ codigo: criado.codigo, valorTotal: criado.valorTotal, cfop });
 }
 
 async function apagar(req, res) {

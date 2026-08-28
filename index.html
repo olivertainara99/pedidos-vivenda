@@ -121,13 +121,14 @@ input,button,select{font:inherit; color:inherit}
 .vazio{color:var(--fraca); font-size:14px; padding:6px 0}
 
 .cfop{margin-top:10px; padding-top:10px; border-top:1px dashed var(--borda)}
-.cfop .opcoes{display:flex; gap:6px; flex-wrap:wrap}
-.cfop .opcoes button{flex:1 1 auto; min-width:88px; padding:7px 9px; border-radius:8px; cursor:pointer; border:1px solid var(--borda); background:var(--superficie2); color:var(--tinta); font-size:13px; font-weight:600; line-height:1.2; font-variant-numeric:tabular-nums}
-.cfop .opcoes button small{display:block; font-weight:400; font-size:11px; color:var(--fraca); margin-top:2px}
-.cfop .opcoes button:hover{border-color:var(--primaria)}
-.cfop .opcoes button.ativo{border-color:var(--primaria); background:color-mix(in srgb,var(--primaria) 15%,var(--superficie2))}
-.cfop .opcoes button.ativo small{color:var(--tinta)}
-.cfop .explica{font-size:12px; color:var(--fraca); margin:7px 0 0; line-height:1.35}
+.cfop .rot{color:var(--acento); font-variant-numeric:tabular-nums}
+.marcaTela{color:var(--perigo); border:1px solid color-mix(in srgb,var(--perigo) 45%,transparent); border-radius:99px; padding:2px 8px; margin-left:6px; letter-spacing:.06em}
+.cfop .explica{font-size:12px; color:var(--fraca); margin:6px 0 0; line-height:1.35}
+
+.abas{display:flex; gap:8px; margin:0 0 16px}
+.abas button{flex:1 1 0; padding:10px 12px; border-radius:9px; cursor:pointer; border:1px solid var(--borda); background:var(--superficie2); color:var(--fraca); font-size:14px; font-weight:600}
+.abas button:hover{border-color:var(--primaria)}
+.abas button.ativa{border-color:var(--primaria); background:color-mix(in srgb,var(--primaria) 15%,var(--superficie2)); color:var(--tinta)}
 .cfop .explica b{color:var(--tinta); font-weight:600}
 .linhas-valor{margin-top:9px; padding-top:9px; border-top:1px dashed var(--borda); font-size:13.5px}
 .linhas-valor div{display:flex; justify-content:space-between; padding:1px 0; color:var(--fraca); font-variant-numeric:tabular-nums}
@@ -172,18 +173,21 @@ input,button,select{font:inherit; color:inherit}
     termo: '',
     nome: '',
     decisoes: {},        // codigo -> 'autorizar' | 'recusar' | 'excluir'
-    cfops: {},           // codigo -> CFOP escolhido
+    aba: 'autorizar',    // só para a Tainara: 'autorizar' ou 'lancar'
     confirmando: false,
     ocupado: false,
     erro: '',
     resultados: []
   };
 
+  // O CFOP é decidido pelo servidor quando o pedido nasce, pela regra:
+  // FORMOSA lançada pelo Jean = 5917; FORMOSA lançada pela Tainara = 5113;
+  // qualquer outro cliente = 5401. Aqui só descrevemos o que já foi decidido.
   var CFOPS = [
     {c:'5401', nome:'Venda com ST', natOp:'Venda de produção do estabelecimento quando o produto esteja sujeito a ST',
-     resumo:'O padrão. ICMS com substituição tributária, mais PIS e COFINS. Esta o app emite sozinho.', tributa:true, automatico:true},
-    {c:'5917', nome:'Remessa consignação', natOp:'Remessa de mercadoria em consignação mercantil ou industrial',
-     resumo:'Sem imposto nenhum. A venda fica pronta, mas a nota sai pela tela do eGestor.', tributa:false, automatico:false},
+     resumo:'ICMS com substituição tributária, mais PIS e COFINS. Esta o app emite sozinho.', tributa:true, automatico:true},
+    {c:'5917', nome:'Remessa em consignação', natOp:'Remessa de mercadoria em consignação mercantil ou industrial',
+     resumo:'Sem imposto nenhum. A venda fica pronta e a nota sai pela tela do eGestor.', tributa:false, automatico:false},
     {c:'5113', nome:'Venda remetida antes', natOp:'Venda de produção do estabelecimento remetida anteriormente',
      resumo:'Fecha a consignação, tributa igual à 5401. A nota sai pela tela do eGestor.', tributa:true, automatico:false}
   ];
@@ -196,7 +200,7 @@ input,button,select{font:inherit; color:inherit}
   function moeda(v){ return 'R$ ' + Number(v || 0).toFixed(2).replace('.', ','); }
   function el(id){ return document.getElementById(id); }
   function infoCfop(c){ return CFOPS.filter(function(x){ return x.c === c; })[0] || CFOPS[0]; }
-  function cfopDe(p){ return estado.cfops[p.codigo] || p.cfop || '5401'; }
+  function cfopDe(p){ return p.cfop || '5401'; }
   function stPedido(p){
     return p.itens.reduce(function(s,i){ return s + Math.round(i.qtd*i.preco*0.038*100)/100; }, 0);
   }
@@ -226,9 +230,12 @@ input,button,select{font:inherit; color:inherit}
   function render(){
     var raiz = el('raiz');
     if(!estado.papel){ raiz.innerHTML = telaLogin(); el('barra').innerHTML = ''; ligarLogin(); return; }
+    var miolo = estado.papel === 'dona'
+      ? abas() + (estado.aba === 'lancar' ? telaJean() : telaDona())
+      : telaJean();
     raiz.innerHTML = '<div class="env">' + cabecalho() +
       (estado.erro ? '<div class="aviso"><b>Não deu certo</b>' + esc(estado.erro) + '</div>' : '') +
-      (estado.papel === 'dona' ? telaDona() : telaJean()) + '</div>';
+      miolo + '</div>';
     ligar();
     renderBarra();
   }
@@ -246,9 +253,19 @@ input,button,select{font:inherit; color:inherit}
       '</div>';
   }
 
+  function abas(){
+    return '<div class="abas">' +
+      '<button class="' + (estado.aba === 'autorizar' ? 'ativa' : '') + '" data-aba="autorizar">' +
+        'Autorizar' + (estado.pedidos.length ? ' (' + estado.pedidos.length + ')' : '') + '</button>' +
+      '<button class="' + (estado.aba === 'lancar' ? 'ativa' : '') + '" data-aba="lancar">Lançar pedido</button>' +
+      '</div>';
+  }
+
   function cabecalho(){
     var sub = estado.papel === 'dona'
-      ? 'Confira o que o Jean anotou, defina o CFOP e libere o que vira nota.'
+      ? (estado.aba === 'lancar'
+          ? 'Pedido lançado por você. Na FORMOSA sai como 5113, o resto como 5401.'
+          : 'Confira o que o Jean anotou e libere o que vira nota.')
       : 'Anote os pedidos aqui. A emissão sai depois, com a autorização da Tainara.';
     return '<div class="topo">' + marca() + '<h1>Pedidos do dia</h1></div>' +
       '<p class="sub">' + sub + '</p>' +
@@ -360,12 +377,9 @@ input,button,select{font:inherit; color:inherit}
     p.itens.forEach(function(i){ h += '<li><span>' + esc(i.desc) + '</span><b>' + i.qtd + '</b></li>'; });
     h += '</ul>';
 
-    h += '<div class="cfop"><p class="rot">CFOP da nota</p><div class="opcoes">';
-    CFOPS.forEach(function(x){
-      h += '<button class="' + (x.c === atual ? 'ativo' : '') + '" data-cfop="' + p.codigo + '|' + x.c + '">' +
-        x.c + '<small>' + esc(x.nome) + '</small></button>';
-    });
-    h += '</div><p class="explica"><b>' + esc(info.natOp) + '.</b> ' + esc(info.resumo) + '</p></div>';
+    h += '<div class="cfop"><p class="rot">CFOP ' + esc(atual) + ' · ' + esc(info.nome) +
+      (info.automatico ? '' : ' <span class="marcaTela">nota pela tela</span>') + '</p>' +
+      '<p class="explica"><b>' + esc(info.natOp) + '.</b> ' + esc(info.resumo) + '</p></div>';
 
     h += '<div class="linhas-valor">' +
       '<div><span>Produtos</span><span>' + moeda(p.totalProdutos) + '</span></div>' +
@@ -438,7 +452,7 @@ input,button,select{font:inherit; color:inherit}
 
   function renderBarra(){
     var b = el('barra');
-    if(estado.papel === 'dona'){
+    if(estado.papel === 'dona' && estado.aba === 'autorizar'){
       var c = contas();
       b.innerHTML = '<div class="cont"><b>' + c.total + (c.total === 1 ? ' mudança' : ' mudanças') + '</b>' +
         (c.emitir.length ? c.emitir.length + ' nota(s) para emitir' : c.total ? 'toque em revisar' : 'nada marcado ainda') + '</div>' +
@@ -479,7 +493,7 @@ input,button,select{font:inherit; color:inherit}
     var sair = el('btnSair');
     if(sair) sair.addEventListener('click', function(){
       api('/api/login', {method:'DELETE'}).finally(function(){
-        estado.papel = null; estado.decisoes = {}; estado.cfops = {}; render();
+        estado.papel = null; estado.decisoes = {}; estado.aba = "autorizar"; render();
       });
     });
 
@@ -525,9 +539,8 @@ input,button,select{font:inherit; color:inherit}
     cada('[data-sim]', function(elm){ marcar(elm.getAttribute('data-sim'), 'autorizar'); });
     cada('[data-nao]', function(elm){ marcar(elm.getAttribute('data-nao'), 'recusar'); });
     cada('[data-fora]', function(elm){ marcar(elm.getAttribute('data-fora'), 'excluir'); });
-    cada('[data-cfop]', function(elm){
-      var pa = elm.getAttribute('data-cfop').split('|');
-      estado.cfops[pa[0]] = pa[1];
+    cada('[data-aba]', function(elm){
+      estado.aba = elm.getAttribute('data-aba');
       estado.confirmando = false;
       render();
     });
@@ -647,7 +660,7 @@ input,button,select{font:inherit; color:inherit}
           await api('/api/autorizar', {method:'POST', body: JSON.stringify({codigo:p.codigo, acao:'recusar'})});
           estado.resultados.push({codigo:p.codigo, cliente:p.cliente.nome, tipo:'recusado', rotulo:'recusado'});
         }else{
-          var r = await api('/api/autorizar', {method:'POST', body: JSON.stringify({codigo:p.codigo, cfop: cfopDe(p)})});
+          var r = await api('/api/autorizar', {method:'POST', body: JSON.stringify({codigo:p.codigo})});
           if(r.resultado === 'emitida'){
             estado.resultados.push({codigo:p.codigo, cliente:p.cliente.nome, tipo:'emitida',
               rotulo:'NF-e ' + r.numNota, detalhe:'Autorizada. Chave ' + r.chave});
@@ -664,7 +677,7 @@ input,button,select{font:inherit; color:inherit}
       }
     }
 
-    estado.decisoes = {}; estado.cfops = {}; estado.ocupado = false;
+    estado.decisoes = {}; estado.ocupado = false;
     await carregarPedidos();
   }
 

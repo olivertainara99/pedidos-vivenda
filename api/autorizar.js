@@ -8,18 +8,15 @@
 // nem de natureza da operação, então a nota sairia como 5401. Esses ficam como
 // venda pronta, para emitir pela tela do eGestor.
 
-import { eg, erro, montarObs, lerObs, TAG_APP } from './_egestor.js';
+import { eg, erro, montarObs, lerObs, saiSozinha, TAG_APP } from './_egestor.js';
 import { exigir } from './_sessao.js';
-
-const CFOPS_VALIDOS = ['5401', '5917', '5113'];
-const CFOP_AUTOMATICO = '5401';
 
 export default async function handler(req, res) {
   if (!exigir(req, res, ['dona'])) return;
   if (req.method !== 'POST') return res.status(405).json({ erro: 'Método não suportado.' });
 
   try {
-    const { codigo, cfop, acao } = req.body || {};
+    const { codigo, acao } = req.body || {};
     const cod = Number(codigo);
     if (!cod) throw erro(400, 'Informe o código do pedido.');
 
@@ -45,17 +42,17 @@ export default async function handler(req, res) {
       return res.status(200).json({ resultado: 'recusado', codigo: cod });
     }
 
-    const escolhido = String(cfop || antes.cfop || CFOP_AUTOMATICO);
-    if (!CFOPS_VALIDOS.includes(escolhido)) throw erro(400, `CFOP ${escolhido} não é um dos usados aqui.`);
+    // O CFOP foi decidido pela regra quando o pedido nasceu — não vem do navegador.
+    const escolhido = antes.cfop;
 
-    // 1) grava o CFOP e converte em venda
+    // 1) converte o orçamento em venda
     await eg('PUT', `/vendas/${cod}`, {
       situacao: 50,
       campoAdicional1: montarObs({ por: antes.por, cfop: escolhido, nota: 'AUTORIZADO' }),
     });
 
-    // 2) CFOP diferente do padrão: para aqui, a nota sai pela tela
-    if (escolhido !== CFOP_AUTOMATICO) {
+    // 2) CFOP que a API não consegue definir: para aqui, a nota sai pela tela
+    if (!saiSozinha(escolhido)) {
       return res.status(200).json({
         resultado: 'aguardando-tela',
         codigo: cod,

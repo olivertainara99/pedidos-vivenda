@@ -70,6 +70,24 @@ export async function egTudo(caminho, maxPaginas = 6) {
   return todos;
 }
 
+// ---- regra de CFOP ----
+// Decidida no servidor, no momento em que o pedido é criado. Não vem do
+// navegador e não é escolhida na autorização.
+//
+// A FORMOSA trabalha em consignação: o Jean remete a mercadoria (5917, sem
+// imposto) e a Tainara fatura depois o que já foi remetido (5113, com imposto).
+// Qualquer outro cliente é venda normal, 5401.
+export function cfopPara(nomeCliente, papel) {
+  const ehFormosa = /FORMOSA/i.test(String(nomeCliente || ''));
+  if (!ehFormosa) return '5401';
+  return papel === 'dona' ? '5113' : '5917';
+}
+
+// Só o 5401 sai pela API: ela não define natureza da operação.
+export function saiSozinha(cfop) {
+  return String(cfop) === '5401';
+}
+
 // ---- observações do pedido: quem lançou e qual CFOP ----
 // Gravado em customizado.xCampo1 ("Observações gerais" no eGestor), porque é o
 // único campo que a API deixa alterar depois que a venda existe.
