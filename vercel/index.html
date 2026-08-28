@@ -195,7 +195,7 @@ input,button,select{font:inherit; color:inherit}
     catalogo: null,
     pedidos: [],
     recusados: [],
-    fila: [],            // rascunho local do Jean
+    fila: [],            // pedidos montados mas ainda não enviados (ficam no aparelho)
     clienteSel: null,
     quantidades: {},
     termo: '',
@@ -231,6 +231,37 @@ input,button,select{font:inherit; color:inherit}
   }
   function moeda(v){ return 'R$ ' + Number(v || 0).toFixed(2).replace('.', ','); }
   function el(id){ return document.getElementById(id); }
+  // A fila fica guardada no aparelho: o Jean monta ao longo do dia e só manda
+  // no fim. Fechar o navegador, o celular dormir ou a página recarregar não
+  // pode fazer ele perder o que já lançou.
+  function chaveFila(){ return 'vds_fila_' + (estado.papel || 'x'); }
+
+  function salvarFila(){
+    try{ localStorage.setItem(chaveFila(), JSON.stringify(estado.fila)); }catch(e){}
+  }
+
+  function carregarFila(){
+    var guardada = [];
+    try{ guardada = JSON.parse(localStorage.getItem(chaveFila()) || '[]'); }catch(e){ guardada = []; }
+    if(!Array.isArray(guardada)) guardada = [];
+
+    // preços podem ter mudado desde ontem: refaz pelo catálogo de agora.
+    // (o servidor também refaz na hora de criar — aqui é só o que ele vê)
+    if(estado.catalogo){
+      var porCod = {};
+      estado.catalogo.produtos.forEach(function(p){ porCod[p.codigo] = p; });
+      guardada.forEach(function(pedido){
+        pedido.total = 0;
+        (pedido.itens || []).forEach(function(i){
+          var atual = porCod[i.codigo];
+          if(atual){ i.preco = atual.preco; i.desc = atual.descricao; }
+          pedido.total += i.qtd * i.preco;
+        });
+      });
+    }
+    estado.fila = guardada;
+  }
+
   function infoCfop(c){ return CFOPS.filter(function(x){ return x.c === c; })[0] || CFOPS[0]; }
   function cfopDe(p){ return p.cfop || '5401'; }
   function stPedido(p){
@@ -371,6 +402,9 @@ input,button,select{font:inherit; color:inherit}
     if(!estado.fila.length){
       h += '<p class="vazio">Nada aqui ainda. Escolha o cliente, ponha as quantidades e toque em “Adicionar à fila”.</p>';
     }else{
+      var somaFila = estado.fila.reduce(function(s,p){ return s + p.total; }, 0);
+      h += '<p class="vazio" style="padding:0 0 12px">' + moeda(somaFila) + ' em produtos · ' +
+        'fica guardado neste aparelho até você mandar</p>';
       estado.fila.forEach(function(p, idx){
         h += '<div class="pedido"><div class="cab"><div>' +
           '<div class="cli">' + esc(p.cliente.nome) + '</div>' +
@@ -648,10 +682,10 @@ input,button,select{font:inherit; color:inherit}
     if(add) add.addEventListener('click', adicionar);
 
     cada('[data-tirar]', function(elm){
-      estado.fila.splice(Number(elm.getAttribute('data-tirar')), 1); render();
+      estado.fila.splice(Number(elm.getAttribute('data-tirar')), 1); salvarFila(); render();
     });
     cada('[data-editar]', function(elm){
-      var p = estado.fila.splice(Number(elm.getAttribute('data-editar')), 1)[0];
+      var p = estado.fila.splice(Number(elm.getAttribute('data-editar')), 1)[0]; salvarFila();
       estado.clienteSel = p.cliente;
       estado.quantidades = {};
       p.itens.forEach(function(i){ estado.quantidades[i.codigo] = i.qtd; });
@@ -741,6 +775,7 @@ input,button,select{font:inherit; color:inherit}
     });
     if(!itens.length){ alert('Ponha a quantidade de pelo menos um produto.'); return; }
     estado.fila.push({cliente: estado.clienteSel, itens: itens, total: total});
+    salvarFila();
     estado.clienteSel = null; estado.quantidades = {}; estado.termo = '';
     render(); window.scrollTo({top:0, behavior:'smooth'});
   }
@@ -758,6 +793,7 @@ input,button,select{font:inherit; color:inherit}
           itens: p.itens.map(function(i){ return {codProduto:i.codigo, quant:i.qtd}; })
         })});
         estado.fila.shift();
+        salvarFila();
         enviados++;
       }
       alert(enviados + (enviados === 1 ? ' pedido enviado' : ' pedidos enviados') + ' para a Tainara autorizar.');
@@ -831,9 +867,11 @@ input,button,select{font:inherit; color:inherit}
     try{ estado.nome = localStorage.getItem('vds_nome') || ''; }catch(e){}
     estado.erro = '';
     if(estado.papel !== 'dona') estado.aba = 'lancar';
+    carregarFila();   // o que ficou de antes volta na tela
     render();
     try{
       estado.catalogo = await api('/api/catalogo');
+      carregarFila(); // agora com o catálogo, reconfere os preços
     }catch(e){ estado.erro = e.message; }
     if(estado.papel === 'dona') await carregarPedidos(); else render();
   }
