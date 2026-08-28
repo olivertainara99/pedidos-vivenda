@@ -3,7 +3,11 @@
 // POST   cria (Jean)
 // DELETE apaga um (Tainara)
 
-import { eg, egTudo, erro, montarObs, lerObs, cfopPara, podeEmitirPelaApi, cfopsAplicados, TAG_APP, COD_VENDEDOR } from './_egestor.js';
+import {
+  eg, egTudo, erro, montarObs, lerObs, cfopPara, podeEmitirPelaApi, cfopsAplicados,
+  porNoGrupo, devolverAoPadrao, COD_GRUPO_DE_CFOP, GRUPO_PADRAO,
+  TAG_APP, COD_VENDEDOR,
+} from './_egestor.js';
 import { exigir } from './_sessao.js';
 
 const MAX_DETALHAR = 30;
@@ -101,15 +105,27 @@ async function criar(req, res, sessao) {
     produtos.push({ codProduto: cod, quant: qtd, preco: Number(p.precoVenda) || 0, vDesc: 0 });
   }
 
-  const criado = await eg('POST', '/vendas', {
-    codContato,
-    codVendedor: COD_VENDEDOR,
-    dtVenda: hoje(),
-    situacao: 10, // Orçamento: ainda não é venda
-    tags: [TAG_APP],
-    customizado: { xCampo1: montarObs({ por, cfop }) },
-    produtos,
-  });
+  // O CFOP vem do grupo de tributos do produto, e a venda fotografa esse grupo
+  // no instante da criação. Então: põe os produtos no grupo certo, cria, devolve.
+  const grupo = COD_GRUPO_DE_CFOP[cfop] || GRUPO_PADRAO;
+  const codigos = produtos.map((p) => p.codProduto);
+
+  let mexidos = [];
+  let criado;
+  try {
+    mexidos = await porNoGrupo(codigos, grupo);
+    criado = await eg('POST', '/vendas', {
+      codContato,
+      codVendedor: COD_VENDEDOR,
+      dtVenda: hoje(),
+      situacao: 10, // Orçamento: ainda não é venda
+      tags: [TAG_APP],
+      customizado: { xCampo1: montarObs({ por, cfop }) },
+      produtos,
+    });
+  } finally {
+    if (mexidos.length) await devolverAoPadrao(mexidos);
+  }
 
   return res.status(201).json({ codigo: criado.codigo, valorTotal: criado.valorTotal, cfop });
 }

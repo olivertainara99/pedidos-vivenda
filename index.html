@@ -201,11 +201,11 @@ input,button,select{font:inherit; color:inherit}
   // qualquer outro cliente = 5401. Aqui só descrevemos o que já foi decidido.
   var CFOPS = [
     {c:'5401', nome:'Venda com ST', natOp:'Venda de produção do estabelecimento quando o produto esteja sujeito a ST',
-     resumo:'ICMS com substituição tributária, mais PIS e COFINS. Esta o app emite sozinho.', tributa:true, automatico:true},
+     resumo:'ICMS com substituição tributária, mais PIS e COFINS.', tributa:true, automatico:true},
     {c:'5917', nome:'Remessa em consignação', natOp:'Remessa de mercadoria em consignação mercantil ou industrial',
-     resumo:'Sem imposto nenhum. A venda fica pronta e a nota sai pela tela do eGestor.', tributa:false, automatico:false},
+     resumo:'Sem imposto nenhum: ICMS isento, PIS e COFINS não tributados.', tributa:false, automatico:true},
     {c:'5113', nome:'Venda remetida antes', natOp:'Venda de produção do estabelecimento remetida anteriormente',
-     resumo:'Fecha a consignação, tributa igual à 5401. A nota sai pela tela do eGestor.', tributa:true, automatico:false}
+     resumo:'Fecha a consignação, tributa igual à 5401.', tributa:true, automatico:true}
   ];
 
   // ---------- utilidades ----------

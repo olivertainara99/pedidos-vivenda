@@ -96,6 +96,45 @@ export const GRUPO_DE_CFOP = {
   5113: '3 - VENDA REMETIDA ANTERIORMENTE',
 };
 
+export const COD_GRUPO_DE_CFOP = { 5401: 1, 5917: 2, 5113: 3 };
+export const GRUPO_PADRAO = 1;
+
+// A venda FOTOGRAFA o grupo de tributos do produto no instante em que é criada:
+// mudar o produto depois não mexe nas vendas já feitas (verificado em 28/08/2026).
+// É isso que permite lançar um pedido com o CFOP certo sem ninguém trocar nada
+// na tela: colocamos os produtos no grupo desejado, criamos a venda, e devolvemos
+// os produtos ao grupo padrão.
+export async function gruposAtuaisDosProdutos() {
+  const lista = await egTudo('/produtos?fields=codigo,codigoGrupoTributos');
+  const mapa = new Map();
+  lista.forEach((p) => mapa.set(Number(p.codigo), Number(p.codigoGrupoTributos)));
+  return mapa;
+}
+
+// Põe no grupo pedido só os produtos que ainda não estão nele. Devolve quais
+// foram mexidos, para poder desfazer depois.
+export async function porNoGrupo(codigos, grupo) {
+  const atuais = await gruposAtuaisDosProdutos();
+  const mexidos = [];
+  for (const cod of codigos) {
+    if (atuais.get(Number(cod)) === Number(grupo)) continue;
+    await eg('PUT', `/produtos/${cod}`, { codigoGrupoTributos: Number(grupo) });
+    mexidos.push(Number(cod));
+  }
+  return mexidos;
+}
+
+export async function devolverAoPadrao(codigos) {
+  for (const cod of codigos) {
+    try {
+      await eg('PUT', `/produtos/${cod}`, { codigoGrupoTributos: GRUPO_PADRAO });
+    } catch {
+      // Se falhar, o produto fica no grupo errado. Não emite nota errada: a
+      // conferência de CFOP na autorização barra antes de transmitir.
+    }
+  }
+}
+
 // Lê o CFOP que está DE FATO aplicado em cada linha, pelo relatório de produtos
 // vendidos — o único lugar da API que expõe isso. Uma chamada cobre a fila toda.
 export async function cfopsAplicados(diasParaTras = 90) {
