@@ -17,10 +17,19 @@ export default async function handler(req, res) {
   }
 
   const senha = (req.body && req.body.senha) || '';
+  const pedido = (req.body && req.body.papel) || '';
+
+  // A pessoa diz quem é, e a senha tem que ser a daquele papel.
+  const senhaDoPapel = { dona: process.env.SENHA_TAINARA, jean: process.env.SENHA_JEAN };
 
   let papel = null;
-  if (senhaConfere(senha, process.env.SENHA_TAINARA)) papel = 'dona';
-  else if (senhaConfere(senha, process.env.SENHA_JEAN)) papel = 'jean';
+  if (Object.prototype.hasOwnProperty.call(senhaDoPapel, pedido)) {
+    if (senhaConfere(senha, senhaDoPapel[pedido])) papel = pedido;
+  } else {
+    // sem papel informado, cai no comportamento antigo: descobre pela senha
+    if (senhaConfere(senha, senhaDoPapel.dona)) papel = 'dona';
+    else if (senhaConfere(senha, senhaDoPapel.jean)) papel = 'jean';
+  }
 
   if (!papel) {
     // atraso pequeno para não virar oráculo de senha

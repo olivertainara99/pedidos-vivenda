@@ -125,6 +125,21 @@ input,button,select{font:inherit; color:inherit}
 .marcaTela{color:var(--perigo); border:1px solid color-mix(in srgb,var(--perigo) 45%,transparent); border-radius:99px; padding:2px 8px; margin-left:6px; letter-spacing:.06em}
 .cfop .explica{font-size:12px; color:var(--fraca); margin:6px 0 0; line-height:1.35}
 
+.quem-entra{display:flex; gap:10px; margin:0 0 14px}
+.quem-entra button{
+  flex:1 1 0; padding:14px 10px; border-radius:10px; cursor:pointer;
+  border:1px solid var(--borda); background:var(--superficie); color:var(--fraca);
+  font-size:16px; font-weight:600; line-height:1.2;
+}
+.quem-entra button small{display:block; font-weight:400; font-size:12px; margin-top:3px; color:var(--fraca)}
+.quem-entra button:hover{border-color:var(--primaria)}
+.quem-entra button.ativa{
+  border-color:var(--primaria); background:color-mix(in srgb,var(--primaria) 15%,var(--superficie));
+  color:var(--tinta);
+}
+.quem-entra button.ativa small{color:var(--tinta)}
+.campo[disabled]{opacity:.5; cursor:not-allowed}
+
 .abas{display:flex; gap:8px; margin:0 0 16px}
 .abas button{flex:1 1 0; padding:10px 12px; border-radius:9px; cursor:pointer; border:1px solid var(--borda); background:var(--superficie2); color:var(--fraca); font-size:14px; font-weight:600}
 .abas button:hover{border-color:var(--primaria)}
@@ -173,6 +188,7 @@ input,button,select{font:inherit; color:inherit}
     termo: '',
     nome: '',
     decisoes: {},        // codigo -> 'autorizar' | 'recusar' | 'excluir'
+    papelLogin: '',      // quem a pessoa disse que é, na tela de entrada
     aba: 'autorizar',    // só para a Tainara: 'autorizar' ou 'lancar'
     confirmando: false,
     ocupado: false,
@@ -245,10 +261,17 @@ input,button,select{font:inherit; color:inherit}
   }
 
   function telaLogin(){
+    var q = estado.papelLogin;
     return '<div class="porta">' + marca() +
-      '<h1>Pedidos do dia</h1><p>Vivenda dos Sucos</p>' +
-      '<input class="campo" id="inSenha" type="password" placeholder="Sua senha" autocomplete="current-password">' +
-      '<div class="acoes"><button class="btn principal largo" id="btnEntrar">Entrar</button></div>' +
+      '<h1>Pedidos do dia</h1><p>Quem vai usar o app?</p>' +
+      '<div class="quem-entra">' +
+        '<button class="' + (q === 'jean' ? 'ativa' : '') + '" data-quem="jean">Jean<small>anota pedidos</small></button>' +
+        '<button class="' + (q === 'dona' ? 'ativa' : '') + '" data-quem="dona">Tainara<small>autoriza e emite</small></button>' +
+      '</div>' +
+      '<input class="campo" id="inSenha" type="password" autocomplete="current-password"' +
+        (q ? '' : ' disabled') +
+        ' placeholder="' + (q ? 'Senha ' + (q === 'jean' ? 'do Jean' : 'da Tainara') : 'Escolha acima primeiro') + '">' +
+      '<div class="acoes"><button class="btn principal largo" id="btnEntrar"' + (q ? '' : ' disabled') + '>Entrar</button></div>' +
       (estado.erro ? '<p class="vazio" style="color:var(--perigo)">' + esc(estado.erro) + '</p>' : '') +
       '</div>';
   }
@@ -482,12 +505,23 @@ input,button,select{font:inherit; color:inherit}
 
   // ---------- eventos ----------
   function ligarLogin(){
+    Array.prototype.forEach.call(document.querySelectorAll('[data-quem]'), function(bt){
+      bt.addEventListener('click', function(){
+        estado.papelLogin = bt.getAttribute('data-quem');
+        estado.erro = '';
+        try{ localStorage.setItem('vds_papel_login', estado.papelLogin); }catch(e){}
+        render();
+      });
+    });
+
     var s = el('inSenha'), b = el('btnEntrar');
+    if(!estado.papelLogin) return;
+
     function entrar(){
+      if(!s.value){ s.focus(); return; }
       estado.erro = '';
-      var senha = s.value;
       b.disabled = true; b.textContent = 'Entrando…';
-      api('/api/login', {method:'POST', body: JSON.stringify({senha: senha})})
+      api('/api/login', {method:'POST', body: JSON.stringify({papel: estado.papelLogin, senha: s.value})})
         .then(function(r){ estado.papel = r.papel; iniciar(); })
         .catch(function(e){ estado.erro = e.message; render(); });
     }
@@ -707,6 +741,9 @@ input,button,select{font:inherit; color:inherit}
     }catch(e){ estado.erro = e.message; }
     if(estado.papel === 'dona') await carregarPedidos(); else render();
   }
+
+  // o mesmo aparelho costuma ser da mesma pessoa: deixa pré-escolhido
+  try{ estado.papelLogin = localStorage.getItem('vds_papel_login') || ''; }catch(e){}
 
   api('/api/login').then(function(r){
     estado.papel = r.papel;
