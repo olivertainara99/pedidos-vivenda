@@ -140,14 +140,6 @@ input,button,select{font:inherit; color:inherit}
 .quem-entra button.ativa small{color:var(--tinta)}
 .campo[disabled]{opacity:.5; cursor:not-allowed}
 
-.periodo{display:flex; gap:6px; margin:0 0 14px; flex-wrap:wrap}
-.periodo button{
-  flex:1 1 auto; min-width:70px; padding:7px 10px; border-radius:8px; cursor:pointer;
-  border:1px solid var(--borda); background:var(--superficie2); color:var(--fraca);
-  font-size:13px; font-weight:600;
-}
-.periodo button:hover{border-color:var(--primaria)}
-.periodo button.ativa{border-color:var(--primaria); background:color-mix(in srgb,var(--primaria) 15%,var(--superficie2)); color:var(--tinta)}
 
 .dia{border-top:1px solid var(--borda); padding-top:10px; margin-top:10px}
 .dia summary{
@@ -395,12 +387,12 @@ input,button,select{font:inherit; color:inherit}
 
   // ---------- histórico ----------
   function telaHoje(){
-    var h = '<div class="bloco"><p class="rot">Histórico de pedidos</p>' + seletorPeriodo();
+    var h = '<div class="bloco"><p class="rot">Histórico — últimos 30 dias</p>';
     if(estado.carregandoHoje) return h + '<p class="vazio">Buscando…</p></div>';
 
     var grupos = estado.hoje;
     if(!grupos.length){
-      return h + '<p class="vazio">Nenhum pedido nesse período.</p>' +
+      return h + '<p class="vazio">Nenhum pedido nos últimos 30 dias.</p>' +
         '<div class="acoes"><button class="btn miudo" id="btnHoje">Atualizar</button></div></div>';
     }
 
@@ -428,12 +420,6 @@ input,button,select{font:inherit; color:inherit}
     });
 
     return h + '<div class="acoes"><button class="btn miudo" id="btnHoje">Atualizar</button></div></div>';
-  }
-
-  function seletorPeriodo(){
-    return '<div class="periodo">' + [[7,'7 dias'],[30,'30 dias'],[90,'90 dias'],[365,'1 ano']].map(function(p){
-      return '<button class="' + (estado.dias === p[0] ? 'ativa' : '') + '" data-dias="' + p[0] + '">' + p[1] + '</button>';
-    }).join('') + '</div>';
   }
 
   function diaBr(iso){
@@ -684,11 +670,6 @@ input,button,select{font:inherit; color:inherit}
 
     var bh = el('btnHoje');
     if(bh) bh.addEventListener('click', carregarHoje);
-
-    cada('[data-dias]', function(elm){
-      estado.dias = Number(elm.getAttribute('data-dias'));
-      carregarHoje();
-    });
 
     var todos = el('btnTodos');
     if(todos) todos.addEventListener('click', function(){

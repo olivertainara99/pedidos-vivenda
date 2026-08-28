@@ -133,6 +133,17 @@ O pedido do Jean vira um **Orçamento** (`situacao: 10`) com a tag `APP_PEDIDOS`
 
 O CFOP escolhido e quem lançou ficam em `customizado.xCampo1` ("Observações gerais"), no formato `APP | por Jean | CFOP 5401`. É o único campo que a API deixa alterar depois que a venda existe.
 
+## As telas do app
+| aba | quem vê | o que faz |
+|---|---|---|
+| **Lançar pedido** | Jean e Tainara | escolhe cliente, quantidades, monta a fila e manda |
+| **Autorizar (n)** | só Tainara | confere, autoriza/recusa/exclui — é onde a nota é emitida |
+| **Histórico** | Jean e Tainara | últimos 30 dias, agrupado por data, com o desfecho de cada pedido |
+
+O histórico mostra, por pedido: cliente, itens, total, CFOP, hora e o estado — *aguardando*, *autorizada*, *emitida* (com o número da NF-e), *cancelada* ou *rascunho*. O dia mais recente vem aberto, os anteriores recolhidos com contagem e total no cabeçalho.
+
+Custa **duas chamadas** para os 30 dias inteiros, não importa quantos pedidos: o relatório `detalhesProdutosVendidos` traz itens/CFOP/situação de todas as vendas, e a lista de NF-e converte o código interno da nota no número dela. O `por` (quem lançou) não aparece ali — está no `xCampo1` de cada venda, e buscá-lo custaria uma chamada por pedido.
+
 ## Entrada no app
 A tela de login pergunta **quem vai usar** — Jean (anota pedidos) ou Tainara (autoriza e emite) — e só então libera o campo de senha, já dizendo de quem é a senha esperada. No servidor a senha é conferida contra o papel informado. A escolha fica lembrada no aparelho.
 
