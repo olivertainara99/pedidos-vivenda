@@ -150,6 +150,23 @@ Dois formatos, distinguidos pelo título — conferido que não colidem:
 |---|---|---|---|
 | **Mateus** | `PEDIDO DE COMPRAS` (plural) | **vários** | itens com código próprio + EAN de 13 dígitos |
 | **LIDER** | `PEDIDO DE COMPRA` (singular) | **um** | preço com 3 casas (`6,550`); colunas do meio (desconto, despesas, IPI, frete) podem vir vazias, então o **total é o último número da linha**; a "Referência" de 6 dígitos é o nosso código próprio |
+| **FORMOSA** | relatório de produtos vendidos | **um por filial** | é a base das notas **5113** — importar logada como Tainara. Ver detalhes abaixo |
+
+### O relatório da FORMOSA
+- O PDF usa **`x-none` como separador de célula**, o que resolve a ambiguidade dos números (o texto vem com os caracteres espaçados: `1 1 , 0 0 0 0`).
+- Linha vendida tem **5 células** (nome, preço, quantidade, total, código); linha sem venda tem 4 — falta a quantidade — e é ignorada. Filial que não vendeu nada não vira pedido.
+- ⚠️ **Pegadinha:** a coluna do cabeçalho se chama `TOTAL` e a linha que fecha a tabela é `TOTAL:`. Sem exigir os dois-pontos, sai o dobro de tabelas.
+- ⚠️ **Os rótulos das filiais são desenhados DEPOIS das tabelas, em blocos** — não colados a elas. O pareamento é **pela ordem** e não dá para provar. Por isso a tela mostra um **seletor de loja** em cada pedido e pede conferência. Emitir para a loja errada é o erro mais caro aqui.
+
+### Mapas de código, guardados no eGestor (não no código)
+A FORMOSA usa códigos próprios diferentes dos do Mateus — `981779-4` em vez de `281893`. Como `codigoProprio` já está ocupado pelo código do Mateus:
+
+| o quê | onde mora | formato |
+|---|---|---|
+| código do produto na FORMOSA | `anotacoesInternas` do produto | `FORMOSA:981779-4` |
+| rótulo da filial da FORMOSA | `obs` do contato | `FORMOSA:DUQUE` |
+
+Assim a Tainara corrige sozinha no eGestor se a FORMOSA mudar algo, sem mexer no app. Os 11 produtos foram mapeados com o **preço conferido um a um** contra o relatório.
 
 Validados com arquivos reais: Mateus com 5 pedidos, LIDER com 1 (LJ 37 Capanema, 223,80 / 48 unidades).
 
