@@ -140,7 +140,27 @@ O CFOP escolhido e quem lançou ficam em `customizado.xCampo1` ("Observações g
 
 A fila fica no **aparelho** (`localStorage`, chave `vds_fila_<papel>`), não no servidor. Isso é de propósito: o Jean monta ao longo do dia, fecha o navegador quantas vezes quiser, e só manda no fim. Consequência a lembrar: **a fila não atravessa aparelhos** — o que ele lançar no celular não aparece no computador. Ao reabrir, os preços são reconferidos contra o catálogo, caso o pedido tenha virado o dia.
 | **Autorizar (n)** | só Tainara | confere, autoriza/recusa/exclui — é onde a nota é emitida |
+| **Anexar PDF** | Jean e Tainara | lê o PDF que a loja manda e põe os pedidos na fila |
 | **Histórico** | Jean e Tainara | últimos 30 dias, agrupado por data, com o desfecho de cada pedido |
+
+## Leitura do PDF de pedido (`api/importar.js`)
+Funciona com o **"PEDIDO DE COMPRAS"** do Mateus, que traz **várias lojas num arquivo só**. Validado com um PDF real de 5 pedidos.
+
+**Sem dependência nenhuma:** os fluxos de texto do PDF vêm comprimidos com Flate, e o `zlib` do próprio Node descomprime. O texto desenhado fica entre parênteses nos fluxos.
+
+**Como cada pedido é delimitado:** vai do cabeçalho até o `Vlr. TOTAL` dele. Isso se delimita sozinho, sem depender do nome da rede.
+
+⚠️ **Pegadinha que custou uma tentativa:** o cabeçalho de um pedido vem depois do `Vlr. TOTAL` do anterior e carrega junto os *DADOS DA ENTREGA do anterior* — com o CNPJ da loja anterior. Por isso valem sempre o **último** CNPJ, o último nome e a última data antes do `PEDIDO DE COMPRAS`. Pegar o primeiro dá a loja errada.
+
+**Identificação por código, nunca por nome.** O pedido chama "CALDO CANA DAMOENDA 1L", o cadastro chama "SUCO DE CANA DE ACUCAR 1 LITRO" — casar por nome cairia na armadilha caldo × suco. Casa por **CNPJ** (`cpfcnpj` do contato) e por **código próprio** (`codigoProprio`) ou **EAN** (`refEanGtin`). O que não casar é recusado com o motivo.
+
+**Confere as contas do documento** antes de aceitar: qtd × preço de cada linha, soma dos itens contra o total impresso, soma das quantidades. Não fechando, o pedido vem marcado como não aproveitável.
+
+**Nada entra na fila sem confirmação humana** — o Jean vê o que foi lido e decide.
+
+⚠️ **Pendência:** os três sabores de laranja estão **sem código próprio** no cadastro, e os de limão estão com "04"/"05"/"06", que parecem provisórios. Pedido que traga esses itens não vai casar. Confirmar os códigos com Mateus e LIDER e preencher no eGestor.
+
+**Fotos (JPEG) não são lidas.** O servidor não enxerga imagem — precisaria de um serviço de visão externo, com chave e custo. Pedido que chega por foto continua sendo lançado à mão, ou mandado para o Claude no chat.
 
 O histórico mostra, por pedido: cliente, itens, total, CFOP, hora e o estado — *aguardando*, *autorizada*, *emitida* (com o número da NF-e), *cancelada* ou *rascunho*. O dia mais recente vem aberto, os anteriores recolhidos com contagem e total no cabeçalho.
 
