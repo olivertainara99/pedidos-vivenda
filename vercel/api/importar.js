@@ -116,6 +116,49 @@ function lerPedidosDeCompra(texto) {
   return pedidos.length ? pedidos : null;
 }
 
+// Formato "PEDIDO DE COMPRA" (LIDER): um pedido por arquivo.
+//
+// Item:  DESCRICAO  EMBALAGEM  COD/EAN  REFERENCIA  QTDE  PRECO ...  TOTAL
+// A REFERENCIA de 6 dígitos é o nosso código próprio — o mesmo que o Mateus usa.
+// O preço vem com 3 casas ("6,550") e as colunas do meio (desconto, despesas,
+// IPI, frete) podem vir vazias, por isso o total é o último número da linha.
+function lerPedidoDeCompra(texto) {
+  if (!/PEDIDO DE COMPRA\b/.test(texto) || /PEDIDO DE COMPRAS/.test(texto)) return null;
+
+  const cnpjs = (texto.match(/\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}/g) || [])
+    .map(soDigitos)
+    .filter((c) => c !== CNPJ_VIVENDA);
+  if (!cnpjs.length) return null;
+
+  const itens = [];
+  const reItem = /([A-Z][A-Z0-9 .\/]{4,}?)\s+[A-Z]{2}\/\d+\s+[\d-]+\s+(\d{6})\s+(\d+)\s+([\d.,]+)\s+((?:[\d.,]+\s+){0,4})([\d.,]+)\s/g;
+  let m;
+  while ((m = reItem.exec(texto)) !== null) {
+    itens.push({
+      codigoProprio: m[2],
+      descricaoPedido: m[1].trim(),
+      ean: '',
+      qtd: Math.round(numeroBr(m[3])),
+      preco: numeroBr(m[4]),
+      total: numeroBr(m[6]),
+    });
+  }
+  if (!itens.length) return null;
+
+  const emitente = (texto.match(/Emitente\s*:\s*(.+?)\s+\d+-\d/) || [])[1] || '';
+  const cidade = (texto.match(/Cidade:\s*([A-Z ]+?)\s+[A-Z]{2}\s/) || [])[1] || '';
+
+  return [{
+    loja: [emitente.trim(), cidade.trim()].filter(Boolean).join(' - '),
+    cnpj: cnpjs[0],
+    numero: (texto.match(/Pedido:\s*([\d-]+)/) || [])[1] || null,
+    entrega: (texto.match(/Entrega\s*:\s*(\d{2}\/\d{2}\/\d{2,4})/) || [])[1] || null,
+    itens,
+    qtdDocumento: (() => { const x = texto.match(/Total em unidades:\s*([\d.,]+)/); return x ? Math.round(numeroBr(x[1])) : null; })(),
+    totalDocumento: (() => { const x = texto.match(/Total do Pedido:\s*([\d.,]+)/); return x ? numeroBr(x[1]) : null; })(),
+  }];
+}
+
 // Confere as contas do próprio documento. Se não fecharem, não confiamos na leitura.
 function conferir(p) {
   const problemas = [];
@@ -154,9 +197,9 @@ export default async function handler(req, res) {
       throw erro(422, 'Esse PDF não tem texto — parece ser digitalização ou foto. Lance esse pedido à mão.');
     }
 
-    const brutos = lerPedidosDeCompra(texto);
+    const brutos = lerPedidosDeCompra(texto) || lerPedidoDeCompra(texto);
     if (!brutos) {
-      throw erro(422, 'Não reconheci o formato desse pedido. Por enquanto o app lê o "PEDIDO DE COMPRAS" do Mateus.');
+      throw erro(422, 'Não reconheci o formato desse pedido. Por enquanto o app lê o "PEDIDO DE COMPRAS" do Mateus e o "PEDIDO DE COMPRA" da LIDER.');
     }
 
     // cadastro para casar por CNPJ e por código próprio
