@@ -7,10 +7,18 @@ export const COD_VENDEDOR = 3; // Tainara
 
 // o access_token dura 900s; guardamos por 800s enquanto a lambda estiver quente
 let sessao = { token: null, expira: 0 };
+let pedindo = null; // pedido de token em voo
 
+// Guarda a PROMESSA, não só o token: quando baixamos vários DANFEs de uma vez,
+// as chamadas partem juntas e todas encontrariam o cache vazio — sem isso cada
+// uma abriria um login próprio no eGestor, à toa.
 async function acessar() {
   if (sessao.token && Date.now() < sessao.expira) return sessao.token;
+  if (!pedindo) pedindo = entrar().finally(() => { pedindo = null; });
+  return pedindo;
+}
 
+async function entrar() {
   const personal = process.env.EGESTOR_PERSONAL_TOKEN;
   if (!personal) throw erro(500, 'EGESTOR_PERSONAL_TOKEN não está configurado na Vercel.');
 

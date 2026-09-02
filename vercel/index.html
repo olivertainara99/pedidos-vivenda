@@ -98,6 +98,10 @@ input,button,select{font:inherit; color:inherit}
 .btn.largo{width:100%}
 .acoes{display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:14px}
 
+.escolher{display:inline-flex; gap:9px; align-items:center; margin-top:11px; font-size:13px; color:var(--fraca); cursor:pointer; -webkit-user-select:none; user-select:none}
+.escolher input{width:18px; height:18px; margin:0; accent-color:var(--primaria); cursor:pointer; flex:none}
+.escolher.on{color:var(--tinta); font-weight:600}
+
 .pedido{border:1px solid var(--borda); border-radius:10px; padding:12px 14px; background:var(--superficie); margin-bottom:10px}
 .pedido.pendendo{border-left:3px solid var(--acento)}
 .pedido.vai-sim{border-left:3px solid var(--primaria); background:color-mix(in srgb,var(--primaria) 6%,var(--superficie))}
@@ -212,7 +216,8 @@ input,button,select{font:inherit; color:inherit}
     confirmando: false,
     ocupado: false,
     erro: '',
-    resultados: []
+    resultados: [],
+    selDanfe: {}      // notas marcadas para ir num PDF só, por código da NF-e
   };
 
   // O CFOP é decidido pelo servidor quando o pedido nasce, pela regra:
@@ -536,6 +541,15 @@ input,button,select{font:inherit; color:inherit}
         '<span class="data">' + esc(diaBr(g.dia)) + '</span>' +
         '<span class="resumo">' + g.pedidos.length + (g.pedidos.length === 1 ? ' pedido' : ' pedidos') +
         ' · ' + moeda(g.total) + '</span></summary>';
+
+      // Mandar o dia inteiro de uma vez é o caso comum quando ela vai buscar
+      // notas antigas — sem isso seriam dez toques até marcar tudo.
+      var emitidas = g.pedidos.filter(function(p){ return p.estado === 'emitida' && p.codNota; });
+      if(emitidas.length > 1){
+        h += '<div class="acoes" style="margin:0 0 10px"><button class="btn miudo" data-dia="' + esc(g.dia) + '">' +
+          'Marcar as ' + emitidas.length + ' notas do dia</button></div>';
+      }
+
       g.pedidos.forEach(function(p){
         h += '<div class="pedido"><div class="cab"><div>' +
           '<div class="cli">' + esc(p.cliente) + '</div>' +
@@ -545,7 +559,7 @@ input,button,select{font:inherit; color:inherit}
         p.itens.forEach(function(i){ h += '<li><span>' + esc(i.desc) + '</span><b>' + i.qtd + '</b></li>'; });
         h += '</ul><div class="total"><span>Produtos</span><span>' + moeda(p.total) + '</span></div>' +
           '<div class="nota">' + esc(p.detalhe) + '</div>' +
-          (p.estado === 'emitida' && p.codNota ? '<div class="acoes">' + botaoDanfe(p.codNota, p.numNota) + '</div>' : '') +
+          (p.estado === 'emitida' && p.codNota ? caixaDanfe(p.codNota, p.numNota) : '') +
           '</div>';
       });
       h += '</details>';
@@ -685,8 +699,7 @@ input,button,select{font:inherit; color:inherit}
         '<div class="loc">orçamento ' + r.codigo + '</div></div>' +
         '<span class="selo ' + cls + '">' + esc(r.rotulo) + '</span></div>' +
         (r.detalhe ? '<div class="nota">' + esc(r.detalhe) + '</div>' : '') +
-        (r.tipo === 'emitida' && r.codNota
-          ? '<div class="acoes">' + botaoDanfe(r.codNota, r.numNota) + '</div>' : '') +
+        (r.tipo === 'emitida' && r.codNota ? caixaDanfe(r.codNota, r.numNota) : '') +
         '</div>';
     });
     return h + '</div>';
@@ -704,9 +717,19 @@ input,button,select{font:inherit; color:inherit}
 
   function renderBarra(){
     var b = el('barra');
-    if(estado.aba === 'hoje' || estado.aba === 'anexo'){ b.innerHTML = ''; return; }
+    var danfes = barraDanfe();
+
+    // No histórico só existe uma ação possível: mandar os DANFEs marcados.
+    if(estado.aba === 'hoje' || estado.aba === 'anexo'){
+      b.innerHTML = danfes;
+      ligarBarraDanfe();
+      return;
+    }
     if(estado.papel === 'dona' && estado.aba === 'autorizar'){
       var c = contas();
+      // Acabou de emitir: não há mais nada marcado para decidir, e é justo a
+      // hora de mandar os PDFs para o Jean. A barra troca de assunto sozinha.
+      if(!c.total && danfes){ b.innerHTML = danfes; ligarBarraDanfe(); return; }
       b.innerHTML = '<div class="cont"><b>' + c.total + (c.total === 1 ? ' mudança' : ' mudanças') + '</b>' +
         (c.emitir.length ? c.emitir.length + ' nota(s) para emitir' : c.total ? 'toque em revisar' : 'nada marcado ainda') + '</div>' +
         '<div class="grupo-btn"><button class="btn principal" id="btnRevisar"' +
@@ -841,9 +864,34 @@ input,button,select{font:inherit; color:inherit}
     var canc = el('btnCancelar');
     if(canc) canc.addEventListener('click', function(){ estado.confirmando = false; render(); });
 
-    cada('[data-danfe]', function(b){
-      var p = String(b.getAttribute('data-danfe')).split('|');
-      mandarDanfe(p[0], p[1], b);
+    cada('[data-dia]', function(b){
+      var dia = b.getAttribute('data-dia');
+      var g = (estado.hoje || []).filter(function(x){ return x.dia === dia; })[0];
+      if(!g) return;
+      g.pedidos.forEach(function(p){
+        if(p.estado === 'emitida' && p.codNota) marcarDanfe(p.codNota, p.numNota, true);
+      });
+      // marca as caixas na mão para não fechar os dias que ela abriu
+      Array.prototype.forEach.call(document.querySelectorAll('input[data-danfe]'), function(cx){
+        var cod = String(cx.getAttribute('data-danfe')).split('|')[0];
+        if(estado.selDanfe[cod]){
+          cx.checked = true;
+          var rot = cx.closest('.escolher');
+          if(rot) rot.classList.add('on');
+        }
+      });
+      renderBarra();
+    });
+
+    Array.prototype.forEach.call(document.querySelectorAll('input[data-danfe]'), function(cx){
+      cx.addEventListener('change', function(){
+        var p = String(cx.getAttribute('data-danfe')).split('|');
+        marcarDanfe(p[0], p[1], cx.checked);
+        // só a barra e o rótulo mudam — redesenhar tudo fecharia os dias abertos
+        var rot = cx.closest('.escolher');
+        if(rot) rot.classList.toggle('on', cx.checked);
+        renderBarra();
+      });
     });
   }
 
@@ -936,6 +984,7 @@ input,button,select{font:inherit; color:inherit}
     var c = contas();
     if(!c.total) return;
     estado.ocupado = true; estado.confirmando = false; estado.erro = ''; estado.resultados = [];
+    estado.selDanfe = {}; // marcação da leva anterior não vale para esta
     render();
 
     for(var i = 0; i < estado.pedidos.length; i++){
@@ -967,24 +1016,50 @@ input,button,select{font:inherit; color:inherit}
       }
     }
 
+    // Emitiu a leva: já deixa todas marcadas, porque mandar o lote inteiro ao
+    // Jean é o que ela faz em seguida. Se quiser tirar alguma, é só desmarcar.
+    estado.resultados.forEach(function(r){
+      if(r.tipo === 'emitida' && r.codNota) marcarDanfe(r.codNota, r.numNota, true);
+    });
+
     estado.decisoes = {}; estado.ocupado = false;
     await carregarPedidos();
   }
 
   // ---------- DANFE ----------
-  // No celular abre o compartilhamento do sistema, com o WhatsApp na lista.
-  // No computador, baixa o arquivo.
-  async function mandarDanfe(codNota, numero, botao){
+  // Ela marca as notas e recebe UM arquivo com todas — dez PDFs soltos no
+  // WhatsApp viram uma bagunça do lado do Jean. O servidor é que junta.
+  function marcadas(){
+    return Object.keys(estado.selDanfe).map(function(k){ return estado.selDanfe[k]; });
+  }
+
+  function numerosEmOrdem(notas){
+    return notas.map(function(n){ return Number(n.numero) || 0; }).sort(function(a,b){ return a-b; });
+  }
+
+  function nomeDoPdf(notas){
+    var n = numerosEmOrdem(notas);
+    if(notas.length === 1) return 'NFe-' + (n[0] || notas[0].codigo) + '.pdf';
+    return 'NFe-' + n[0] + '-a-' + n[n.length-1] + '.pdf';
+  }
+
+  async function mandarDanfes(botao){
+    var notas = marcadas();
+    if(!notas.length) return;
     var rotulo = botao ? botao.textContent : '';
-    if(botao){ botao.disabled = true; botao.textContent = 'Buscando…'; }
+    if(botao){ botao.disabled = true; botao.textContent = 'Montando o PDF…'; }
     try{
-      var r = await fetch('/api/danfe?codigo=' + codNota + '&numero=' + (numero || ''), {credentials:'same-origin'});
+      var r = await fetch('/api/danfes', {
+        method:'POST', credentials:'same-origin',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({notas: notas.map(function(n){ return {codigo:n.codigo, numero:n.numero}; })})
+      });
       if(!r.ok){
         var j = null; try{ j = await r.json(); }catch(e){}
-        throw new Error((j && j.erro) || 'Não consegui pegar o DANFE.');
+        throw new Error((j && j.erro) || 'Não consegui montar o PDF.');
       }
       var blob = await r.blob();
-      var nome = 'NFe-' + (numero || codNota) + '.pdf';
+      var nome = nomeDoPdf(notas);
       var arq = new File([blob], nome, {type:'application/pdf'});
 
       if(navigator.canShare && navigator.canShare({files:[arq]})){
@@ -1010,10 +1085,46 @@ input,button,select{font:inherit; color:inherit}
     catch(e){ return false; }
   }
 
-  function botaoDanfe(codNota, numero){
+  function marcarDanfe(codNota, numero, ligado){
+    if(ligado) estado.selDanfe[codNota] = {codigo:Number(codNota), numero:Number(numero) || 0};
+    else delete estado.selDanfe[codNota];
+  }
+
+  function caixaDanfe(codNota, numero){
     if(!codNota) return '';
-    return '<button class="btn miudo" data-danfe="' + codNota + '|' + (numero || '') + '">' +
-      (podeCompartilhar() ? 'Enviar DANFE' : 'Baixar DANFE') + '</button>';
+    var on = !!estado.selDanfe[codNota];
+    return '<label class="escolher' + (on ? ' on' : '') + '">' +
+      '<input type="checkbox" data-danfe="' + codNota + '|' + (Number(numero) || '') + '"' + (on ? ' checked' : '') + '>' +
+      '<span>Incluir no PDF</span></label>';
+  }
+
+  function limparMarcadas(){
+    estado.selDanfe = {};
+    // desmarca na tela sem redesenhar: um render fecharia os dias abertos
+    Array.prototype.forEach.call(document.querySelectorAll('input[data-danfe]'), function(cx){
+      cx.checked = false;
+      var rot = cx.closest('.escolher');
+      if(rot) rot.classList.remove('on');
+    });
+    renderBarra();
+  }
+
+  // Vai dentro da mesma barra de baixo que já existe.
+  function barraDanfe(){
+    var n = marcadas().length;
+    if(!n) return '';
+    return '<div class="cont"><b>' + n + (n === 1 ? ' nota marcada' : ' notas marcadas') + '</b>' +
+      (n === 1 ? 'o DANFE dela' : 'todas num arquivo só') + '</div>' +
+      '<div class="grupo-btn"><button class="btn miudo" id="btnLimparDanfe">Limpar</button>' +
+      '<button class="btn principal" id="btnMandarDanfe">' +
+      (podeCompartilhar() ? 'Enviar PDF' : 'Baixar PDF') + '</button></div>';
+  }
+
+  function ligarBarraDanfe(){
+    var lim = el('btnLimparDanfe');
+    if(lim) lim.addEventListener('click', limparMarcadas);
+    var man = el('btnMandarDanfe');
+    if(man) man.addEventListener('click', function(){ mandarDanfes(man); });
   }
 
   // ---------- anexo ----------

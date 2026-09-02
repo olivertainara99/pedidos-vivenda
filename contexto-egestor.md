@@ -42,6 +42,8 @@ O DANFE e o XML (`GET /nfe/{codNota}/xml`) vêm como **binário, não JSON** —
 
 Cuidado: `GET /nfe/{cod}` **ignora o `fields=`** e devolve o XML inteiro junto. Na listagem `GET /nfe?dtIni=…` o `fields=` funciona. Por isso `api/danfe.js` não consulta a nota antes de baixar o PDF — seria uma chamada cara e à toa dentro do limite de 60/min.
 
+Juntar vários DANFEs num PDF é `api/danfes.js`, com a **pdf-lib** (única dependência do projeto; JS puro, a Vercel instala no build). Baixa em blocos de 6 — tudo de uma vez atropela o eGestor, um a um estoura o tempo da função — e o teto é 30 notas por arquivo. Por causa desse paralelismo, o `acessar()` do `_egestor.js` guarda a **promessa** do token, não só o token: senão as seis chamadas partiriam juntas, achariam o cache vazio e abririam seis logins.
+
 Também existe `POST /vendas/{cod}/gerarNfce` (NFC-e / cupom) e `GET /vendas/{cod}/gerarNfse` (serviço), caso um dia precise.
 
 ## Comandos do helper (`egestor.sh`)
@@ -148,7 +150,11 @@ A fila fica no **aparelho** (`localStorage`, chave `vds_fila_<papel>`), não no 
 | **Anexar PDF** | Jean e Tainara | lê o PDF que a loja manda e põe os pedidos na fila |
 | **Histórico** | Jean e Tainara | últimos 30 dias, agrupado por data, com o desfecho de cada pedido |
 
-Na **Autorizar**, cada nota que sai ganha um botão **Enviar DANFE**, e o mesmo botão aparece no **Histórico** em todo pedido já emitido. No celular ele abre o compartilhamento do Android/iOS — o WhatsApp está na lista, então o PDF vai para o Jean em dois toques. No computador o rótulo vira **Baixar DANFE** e o arquivo cai na pasta de downloads.
+Toda nota emitida — na **Autorizar** e no **Histórico** — ganha uma caixinha **Incluir no PDF**. O que estiver marcado vira **um arquivo só**, na ordem do número da NF-e: dez DANFEs soltos no WhatsApp viram bagunça do lado do Jean. A barra de baixo mostra quantas estão marcadas e manda.
+
+Detalhes que economizam toque: assim que a leva é emitida, todas já saem marcadas (é o que ela faz em seguida); no histórico, cada dia com mais de uma nota tem um **Marcar as N notas do dia**; e marcar/desmarcar não redesenha a tela, para não fechar os dias que ela abriu.
+
+No celular o botão abre o compartilhamento do Android/iOS — o WhatsApp está na lista. No computador o rótulo vira **Baixar PDF**.
 
 ## Leitura do PDF de pedido (`api/importar.js`)
 Dois formatos, distinguidos pelo título — conferido que não colidem:

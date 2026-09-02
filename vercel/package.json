@@ -3,5 +3,8 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
-  "description": "Pedidos e emissao de NF-e da Vivenda dos Sucos"
+  "description": "Pedidos e emissao de NF-e da Vivenda dos Sucos",
+  "dependencies": {
+    "pdf-lib": "^1.17.1"
+  }
 }
