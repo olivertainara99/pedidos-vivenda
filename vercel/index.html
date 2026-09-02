@@ -528,7 +528,12 @@ input,button,select{font:inherit; color:inherit}
     h += '</ul>';
 
     var em = p.emissao || {pode:true};
-    h += '<div class="cfop"><p class="rot">CFOP ' + esc(atual) + ' · ' + esc(info.nome) +
+    // numa nota comum o mel sai 5101 e o resto 5401 — mostramos o que de fato
+    // está aplicado, não só o CFOP da regra
+    var rotuloCfop = (em.cfopAplicado && String(em.cfopAplicado).indexOf(',') >= 0)
+      ? String(em.cfopAplicado).replace(/,\s*/g, ' e ')
+      : atual;
+    h += '<div class="cfop"><p class="rot">CFOP ' + esc(rotuloCfop) + ' · ' + esc(info.nome) +
       (em.pode ? '' : ' <span class="marcaTela">precisa de ajuste</span>') + '</p>' +
       '<p class="explica"><b>' + esc(info.natOp) + '.</b> ' + esc(info.resumo) + '</p>' +
       (em.pode ? '' : '<p class="explica" style="color:var(--perigo)">' + esc(em.motivo) + '</p>') +

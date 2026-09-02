@@ -99,6 +99,18 @@ export const GRUPO_DE_CFOP = {
 export const COD_GRUPO_DE_CFOP = { 5401: 1, 5917: 2, 5113: 3 };
 export const GRUPO_PADRAO = 1;
 
+// Numa venda normal cada produto já está no grupo certo dele, e os CFOPs podem
+// ser diferentes na mesma nota — o que é normal. Pela tabela do contador:
+//   Suco de cana ....... 5401, CST 010, com ST (MVA 20%)
+//   Biscoito com mel ... 5401, CST 010, com ST (MVA 20%)  -> mesmo grupo do suco
+//   Mel de cana ........ 5101, CST 000, sem ST, com IPI 3,25% -> grupo próprio
+// Por isso o app só força o grupo quando o pedido é da FORMOSA (5917/5113),
+// onde a nota inteira muda de natureza. Em pedido comum ele não encosta.
+export const CFOP_NATURAL = '5401';
+export function precisaForcarGrupo(cfop) {
+  return String(cfop) !== CFOP_NATURAL;
+}
+
 // A venda FOTOGRAFA o grupo de tributos do produto no instante em que é criada:
 // mudar o produto depois não mexe nas vendas já feitas (verificado em 28/08/2026).
 // É isso que permite lançar um pedido com o CFOP certo sem ninguém trocar nada
@@ -165,20 +177,45 @@ export async function cfopsAplicados(diasParaTras = 90) {
 // destino (5 dentro do estado). Comparamos só o sufixo.
 export function podeEmitirPelaApi(cfopEsperado, cfopsDaVenda) {
   const esperado = String(cfopEsperado);
-  const alvo = 'x' + esperado.slice(1);
   const linhas = cfopsDaVenda || [];
 
   if (!linhas.length) {
     return { pode: false, motivo: 'Não consegui ler o grupo de tributos desta venda. Confira no eGestor antes de emitir.' };
   }
 
-  const aplicado = linhas[0];
-  const uniforme = linhas.every((c) => c === aplicado);
+  const distintos = [...new Set(linhas)];
+  const emCinco = (c) => String(c).replace(/^x/, '5');
 
-  if (!uniforme) {
-    return { pode: false, motivo: 'Os produtos desta venda estão em grupos de tributos diferentes. Deixe todos no mesmo grupo antes de autorizar.' };
+  // Pedido comum: cada produto sai no CFOP próprio (suco e biscoito em 5401,
+  // mel em 5101). Misturar é esperado. O que não pode é sobrar item no grupo
+  // de consignação, que só existe para a FORMOSA.
+  if (esperado === CFOP_NATURAL) {
+    const consignacao = distintos.filter((c) => c === 'x917' || c === 'x113');
+    if (consignacao.length) {
+      return {
+        pode: false,
+        cfopAplicado: distintos.map(emCinco).join(', '),
+        motivo:
+          `Há item nesta venda no grupo de consignação (CFOP ${emCinco(consignacao[0])}), ` +
+          'que só vale para a FORMOSA. Confira o grupo de tributos dos produtos no eGestor.',
+      };
+    }
+    return { pode: true, cfopAplicado: distintos.map(emCinco).join(', ') };
   }
-  if (aplicado === alvo) return { pode: true, cfopAplicado: aplicado };
+
+  // FORMOSA: a nota inteira muda de natureza, então todos os itens têm que
+  // estar no mesmo grupo.
+  const alvo = 'x' + esperado.slice(1);
+  const aplicado = distintos[0];
+
+  if (distintos.length > 1) {
+    return {
+      pode: false,
+      cfopAplicado: distintos.map(emCinco).join(', '),
+      motivo: 'Os produtos desta venda estão em grupos de tributos diferentes. Numa nota da FORMOSA todos precisam estar no mesmo.',
+    };
+  }
+  if (aplicado === alvo) return { pode: true, cfopAplicado: emCinco(aplicado) };
 
   const grupo = GRUPO_DE_CFOP[esperado];
   return {

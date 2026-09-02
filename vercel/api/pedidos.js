@@ -5,7 +5,7 @@
 
 import {
   eg, egTudo, erro, montarObs, lerObs, cfopPara, podeEmitirPelaApi, cfopsAplicados,
-  porNoGrupo, devolverGrupos, COD_GRUPO_DE_CFOP, GRUPO_PADRAO,
+  porNoGrupo, devolverGrupos, precisaForcarGrupo, COD_GRUPO_DE_CFOP, GRUPO_PADRAO,
   TAG_APP, COD_VENDEDOR,
 } from './_egestor.js';
 import { exigir } from './_sessao.js';
@@ -106,14 +106,19 @@ async function criar(req, res, sessao) {
   }
 
   // O CFOP vem do grupo de tributos do produto, e a venda fotografa esse grupo
-  // no instante da criação. Então: põe os produtos no grupo certo, cria, devolve.
+  // no instante da criação.
+  //
+  // Num pedido comum não mexemos em nada: cada produto já está no grupo certo
+  // dele, e os CFOPs podem ser diferentes na mesma nota (suco e biscoito 5401,
+  // mel 5101). Só a FORMOSA exige forçar, porque aí a nota inteira muda de
+  // natureza — e depois cada produto volta para o grupo em que estava.
   const grupo = COD_GRUPO_DE_CFOP[cfop] || GRUPO_PADRAO;
   const codigos = produtos.map((p) => p.codProduto);
 
   let mexidos = [];
   let criado;
   try {
-    mexidos = await porNoGrupo(codigos, grupo);
+    if (precisaForcarGrupo(cfop)) mexidos = await porNoGrupo(codigos, grupo);
     criado = await eg('POST', '/vendas', {
       codContato,
       codVendedor: COD_VENDEDOR,
