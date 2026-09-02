@@ -204,6 +204,8 @@ input,button,select{font:inherit; color:inherit}
     papelLogin: '',      // quem a pessoa disse que é, na tela de entrada
     aba: 'autorizar',    // 'autorizar' (só Tainara) | 'lancar' | 'hoje'
     hoje: [],            // histórico agrupado por dia
+    importados: null,    // pedidos lidos de um PDF, esperando confirmação
+    lendoPdf: false,
     dias: 30,            // janela do histórico
     carregandoHoje: false,
     confirmando: false,
@@ -310,6 +312,7 @@ input,button,select{font:inherit; color:inherit}
     if(!estado.papel){ raiz.innerHTML = telaLogin(); el('barra').innerHTML = ''; ligarLogin(); return; }
     var miolo = abas() + (
       estado.aba === 'hoje' ? telaHoje()
+      : estado.aba === 'anexo' ? telaAnexo()
       : estado.aba === 'autorizar' && estado.papel === 'dona' ? telaDona()
       : telaJean()
     );
@@ -344,8 +347,9 @@ input,button,select{font:inherit; color:inherit}
     var itens = estado.papel === 'dona'
       ? [['autorizar', 'Autorizar' + (estado.pedidos.length ? ' (' + estado.pedidos.length + ')' : '')],
          ['lancar', 'Lançar'],
+         ['anexo', 'Anexar PDF'],
          ['hoje', 'Histórico']]
-      : [['lancar', 'Lançar pedido'], ['hoje', 'Histórico']];
+      : [['lancar', 'Lançar'], ['anexo', 'Anexar PDF'], ['hoje', 'Histórico']];
     return '<div class="abas">' + itens.map(function(i){
       return '<button class="' + (estado.aba === i[0] ? 'ativa' : '') + '" data-aba="' + i[0] + '">' + i[1] + '</button>';
     }).join('') + '</div>';
@@ -435,6 +439,62 @@ input,button,select{font:inherit; color:inherit}
           '<div class="acoes"><button class="btn miudo" data-editar="' + idx + '">Editar</button>' +
           '<button class="btn miudo perigo" data-tirar="' + idx + '">Remover</button></div></div>';
       });
+    }
+    return h + '</div>';
+  }
+
+  // ---------- anexar PDF ----------
+  function telaAnexo(){
+    var h = '<div class="bloco"><p class="rot">Anexar pedido em PDF</p>' +
+      '<p class="vazio" style="padding:0 0 12px">Aquele PDF que a loja manda. O app lê, você confere, ' +
+      'e só então os pedidos vão para a fila.</p>' +
+      '<input type="file" id="inArquivo" accept="application/pdf,.pdf" class="campo">' +
+      '<div class="acoes"><button class="btn principal" id="btnLer"' + (estado.lendoPdf ? ' disabled' : '') + '>' +
+      (estado.lendoPdf ? '<span class="girando"></span>Lendo…' : 'Ler o arquivo') + '</button></div></div>';
+
+    var lidos = estado.importados;
+    if(!lidos) return h;
+    if(!lidos.length) return h + '<div class="bloco"><p class="vazio">Nenhum pedido encontrado nesse arquivo.</p></div>';
+
+    var prontos = lidos.filter(function(p){ return p.aproveitavel; });
+    h += '<div class="bloco' + (prontos.length ? ' destaque' : '') + '">' +
+      '<p class="rot">Encontrei ' + lidos.length + (lidos.length === 1 ? ' pedido' : ' pedidos') +
+      (prontos.length < lidos.length ? ' · ' + prontos.length + ' aproveitável(is)' : '') + '</p>';
+
+    lidos.forEach(function(p){
+      var soma = p.itens.reduce(function(s,i){
+        return s + (i.produto ? i.qtd * i.produto.preco : 0);
+      }, 0);
+      h += '<div class="pedido' + (p.aproveitavel ? '' : ' vai-nao') + '"><div class="cab"><div>' +
+        '<div class="cli">' + esc(p.cliente ? p.cliente.nome : p.loja) + '</div>' +
+        '<div class="loc">' + esc(p.cliente ? p.cliente.local : 'CNPJ ' + p.cnpj) +
+          (p.numero ? ' · pedido ' + esc(p.numero) : '') +
+          (p.entrega ? ' · entrega ' + esc(p.entrega) : '') + '</div></div>' +
+        '<span class="selo ' + (p.aproveitavel ? 'anotado' : 'erro') + '">' +
+        (p.aproveitavel ? 'pronto' : 'não dá') + '</span></div><ul>';
+
+      p.itens.forEach(function(i){
+        var nome = i.produto ? i.produto.descricao : i.descricaoPedido + ' (não cadastrado)';
+        h += '<li><span>' + esc(nome) + (i.divergePreco
+              ? ' <b style="color:var(--perigo)">preço do pedido ' + moeda(i.precoPedido) +
+                ', cadastro ' + moeda(i.produto.preco) + '</b>' : '') +
+          '</span><b>' + i.qtd + '</b></li>';
+      });
+
+      h += '</ul><div class="total"><span>Produtos pelo seu preço</span><span>' + moeda(soma) + '</span></div>';
+      if(p.totalPedido) h += '<div class="nota">documento diz ' + moeda(p.totalPedido) + '</div>';
+      (p.impedimentos || []).forEach(function(x){
+        h += '<div class="nota" style="color:var(--perigo)">' + esc(x) + '</div>';
+      });
+      h += '</div>';
+    });
+
+    if(prontos.length){
+      h += '<div class="acoes"><button class="btn principal" id="btnParaFila">' +
+        'Pôr ' + prontos.length + (prontos.length === 1 ? ' pedido' : ' pedidos') + ' na fila</button>' +
+        '<button class="btn miudo" id="btnDescartar">Descartar</button></div>';
+    }else{
+      h += '<div class="acoes"><button class="btn miudo" id="btnDescartar">Descartar</button></div>';
     }
     return h + '</div>';
   }
@@ -623,7 +683,7 @@ input,button,select{font:inherit; color:inherit}
 
   function renderBarra(){
     var b = el('barra');
-    if(estado.aba === 'hoje'){ b.innerHTML = ''; return; }
+    if(estado.aba === 'hoje' || estado.aba === 'anexo'){ b.innerHTML = ''; return; }
     if(estado.papel === 'dona' && estado.aba === 'autorizar'){
       var c = contas();
       b.innerHTML = '<div class="cont"><b>' + c.total + (c.total === 1 ? ' mudança' : ' mudanças') + '</b>' +
@@ -731,6 +791,13 @@ input,button,select{font:inherit; color:inherit}
 
     var bh = el('btnHoje');
     if(bh) bh.addEventListener('click', carregarHoje);
+
+    var bl = el('btnLer');
+    if(bl) bl.addEventListener('click', lerArquivo);
+    var bd = el('btnDescartar');
+    if(bd) bd.addEventListener('click', function(){ estado.importados = null; render(); });
+    var bf = el('btnParaFila');
+    if(bf) bf.addEventListener('click', importadosParaFila);
 
     var todos = el('btnTodos');
     if(todos) todos.addEventListener('click', function(){
@@ -868,6 +935,53 @@ input,button,select{font:inherit; color:inherit}
 
     estado.decisoes = {}; estado.ocupado = false;
     await carregarPedidos();
+  }
+
+  // ---------- anexo ----------
+  function lerArquivo(){
+    var inp = el('inArquivo');
+    if(!inp || !inp.files || !inp.files.length){ alert('Escolha o arquivo primeiro.'); return; }
+    var f = inp.files[0];
+    if(f.size > 4 * 1024 * 1024){ alert('Arquivo grande demais (máximo 4 MB).'); return; }
+
+    estado.lendoPdf = true; estado.erro = ''; render();
+    var leitor = new FileReader();
+    leitor.onerror = function(){
+      estado.lendoPdf = false; estado.erro = 'Não consegui abrir o arquivo.'; render();
+    };
+    leitor.onload = function(){
+      api('/api/importar', {method:'POST', body: JSON.stringify({arquivo: leitor.result})})
+        .then(function(r){ estado.importados = r.pedidos || []; })
+        .catch(function(e){ estado.erro = e.message; estado.importados = null; })
+        .finally(function(){ estado.lendoPdf = false; render(); });
+    };
+    leitor.readAsDataURL(f);
+  }
+
+  function importadosParaFila(){
+    var prontos = (estado.importados || []).filter(function(p){ return p.aproveitavel; });
+    if(!prontos.length) return;
+
+    prontos.forEach(function(p){
+      var itens = [], total = 0;
+      p.itens.forEach(function(i){
+        if(!i.produto) return;
+        itens.push({codigo:i.produto.codigo, desc:i.produto.descricao, qtd:i.qtd, preco:i.produto.preco});
+        total += i.qtd * i.produto.preco;
+      });
+      if(!itens.length) return;
+      estado.fila.push({
+        cliente: {codigo: p.cliente.codigo, nome: p.cliente.nome, local: p.cliente.local},
+        itens: itens, total: total
+      });
+    });
+
+    salvarFila();
+    estado.importados = null;
+    estado.aba = 'lancar';
+    render();
+    alert(prontos.length + (prontos.length === 1 ? ' pedido foi' : ' pedidos foram') +
+      ' para a fila. Confira e mande para autorização quando quiser.');
   }
 
   // ---------- carga ----------
