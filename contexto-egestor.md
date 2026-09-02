@@ -40,7 +40,7 @@ Retorno de sucesso do passo 4: `"cStat": 100`, `"xMotivo": "Autorizado o uso da 
 
 O DANFE e o XML (`GET /nfe/{codNota}/xml`) vêm como **binário, não JSON** — por isso `api/_egestor.js` tem o `egBinario()` separado do `eg()`. Quando falha, o corpo volta como JSON de erro em vez do arquivo, e é assim que o `egBinario` distingue os dois: olha se o primeiro byte é `{`.
 
-Cuidado: `GET /nfe/{cod}` **ignora o `fields=`** e devolve o XML inteiro junto. Na listagem `GET /nfe?dtIni=…` o `fields=` funciona. Por isso `api/danfe.js` não consulta a nota antes de baixar o PDF — seria uma chamada cara e à toa dentro do limite de 60/min.
+Cuidado: `GET /nfe/{cod}` **ignora o `fields=`** e devolve o XML inteiro junto. Na listagem `GET /nfe?dtIni=…` o `fields=` funciona. Por isso `api/danfes.js` não consulta as notas antes de baixar os PDFs — seriam chamadas caras e à toa dentro do limite de 60/min.
 
 Juntar vários DANFEs num PDF é `api/danfes.js`, com a **pdf-lib** (única dependência do projeto; JS puro, a Vercel instala no build). Baixa em blocos de 6 — tudo de uma vez atropela o eGestor, um a um estoura o tempo da função — e o teto é 30 notas por arquivo. Por causa desse paralelismo, o `acessar()` do `_egestor.js` guarda a **promessa** do token, não só o token: senão as seis chamadas partiriam juntas, achariam o cache vazio e abririam seis logins.
 
