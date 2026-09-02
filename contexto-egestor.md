@@ -144,7 +144,18 @@ A fila fica no **aparelho** (`localStorage`, chave `vds_fila_<papel>`), não no 
 | **Histórico** | Jean e Tainara | últimos 30 dias, agrupado por data, com o desfecho de cada pedido |
 
 ## Leitura do PDF de pedido (`api/importar.js`)
-Funciona com o **"PEDIDO DE COMPRAS"** do Mateus, que traz **várias lojas num arquivo só**. Validado com um PDF real de 5 pedidos.
+Dois formatos, distinguidos pelo título — conferido que não colidem:
+
+| rede | título | pedidos por arquivo | particularidades |
+|---|---|---|---|
+| **Mateus** | `PEDIDO DE COMPRAS` (plural) | **vários** | itens com código próprio + EAN de 13 dígitos |
+| **LIDER** | `PEDIDO DE COMPRA` (singular) | **um** | preço com 3 casas (`6,550`); colunas do meio (desconto, despesas, IPI, frete) podem vir vazias, então o **total é o último número da linha**; a "Referência" de 6 dígitos é o nosso código próprio |
+
+Validados com arquivos reais: Mateus com 5 pedidos, LIDER com 1 (LJ 37 Capanema, 223,80 / 48 unidades).
+
+No documento da LIDER, `TOTAL PEDIDO` já inclui a substituição tributária (223,80 + 8,52 = 232,32). O app usa o **`Total do Pedido`**, que é o valor dos produtos — o ST sai do cadastro na hora da nota, não do que a loja escreveu.
+
+Para ensinar uma rede nova: escrever uma função `ler...` que devolva `{loja, cnpj, numero, entrega, itens[], qtdDocumento, totalDocumento}` e encadeá-la no `||` do handler.
 
 **Sem dependência nenhuma:** os fluxos de texto do PDF vêm comprimidos com Flate, e o `zlib` do próprio Node descomprime. O texto desenhado fica entre parênteses nos fluxos.
 
