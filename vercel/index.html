@@ -267,10 +267,16 @@ input,button,select{font:inherit; color:inherit}
   function stPedido(p){
     return p.itens.reduce(function(s,i){ return s + Math.round(i.qtd*i.preco*0.038*100)/100; }, 0);
   }
+  // sob o título do sabor, repetir "SUCO DE CANA DE ACUCAR COM LIMÃO" nove vezes
+  // é ruído: fica só o tamanho. Mel e biscoito mantêm o nome inteiro.
   function rotuloCurto(d){
+    if(!/^SUCO DE CANA/.test(d)) return d;
     return String(d||'').replace(/^SUCO DE CANA DE ACUCAR\s*/,'').replace(/COM\s+(LIM[ÃA]O|LARANJA)\s*/,'').trim() || d;
   }
+  var GRUPOS_TELA = ['Tradicional','Com limão','Com laranja','Mel e biscoito'];
+
   function saborDe(d){
+    if(!/^SUCO DE CANA/.test(d)) return 'Mel e biscoito';
     if(/LARANJA/.test(d)) return 'Com laranja';
     if(/LIM/.test(d)) return 'Com limão';
     return 'Tradicional';
@@ -379,8 +385,13 @@ input,button,select{font:inherit; color:inherit}
       (grupos[saborDe(p.descricao)] = grupos[saborDe(p.descricao)] || []).push(p);
     });
     var h = '<div class="bloco"><p class="rot">Quantidades</p>';
-    ['Tradicional','Com limão','Com laranja'].forEach(function(g){
-      var itens = (grupos[g] || []).sort(function(a,b){ return tamanho(a.descricao) - tamanho(b.descricao); });
+    GRUPOS_TELA.forEach(function(g){
+      var itens = (grupos[g] || []).sort(function(a,b){
+        // sucos por tamanho; os demais por nome
+        return g === 'Mel e biscoito'
+          ? String(a.descricao).localeCompare(String(b.descricao))
+          : tamanho(a.descricao) - tamanho(b.descricao);
+      });
       if(!itens.length) return;
       h += '<div class="grupo"><h3>' + esc(g) + '</h3>';
       itens.forEach(function(p){

@@ -1,5 +1,8 @@
 // Clientes e produtos, direto do cadastro do eGestor.
-// Só a linha de suco de cana entra — igual ao combinado no app.
+// Só entram no app os itens que o Jean e a Tainara lançam: a linha de suco de
+// cana, o mel e o biscoito. Caldo de cana, equipamentos e o resto do cadastro
+// ficam de fora — se precisarem de nota, sai pela tela do eGestor.
+const NO_APP = /^SUCO DE CANA|^MEL DE CANA|^BISCOITO COM MEL DE CANA/;
 
 import { egTudo } from './_egestor.js';
 import { exigir } from './_sessao.js';
@@ -21,7 +24,7 @@ export default async function handler(req, res) {
     ]);
 
     const sucos = produtos
-      .filter((p) => /^SUCO DE CANA/.test(p.descricao || ''))
+      .filter((p) => NO_APP.test(p.descricao || ''))
       .map((p) => ({
         codigo: p.codigo,
         descricao: p.descricao,

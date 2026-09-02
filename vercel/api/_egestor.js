@@ -111,23 +111,26 @@ export async function gruposAtuaisDosProdutos() {
   return mapa;
 }
 
-// Põe no grupo pedido só os produtos que ainda não estão nele. Devolve quais
-// foram mexidos, para poder desfazer depois.
+// Põe no grupo pedido só os produtos que ainda não estão nele, e ANOTA em qual
+// grupo cada um estava. Nem todo produto mora no grupo 1 — o mel de cana, por
+// exemplo, fica no 2 — então devolver tudo ao padrão mudaria o cadastro deles.
 export async function porNoGrupo(codigos, grupo) {
   const atuais = await gruposAtuaisDosProdutos();
   const mexidos = [];
   for (const cod of codigos) {
-    if (atuais.get(Number(cod)) === Number(grupo)) continue;
+    const antes = atuais.get(Number(cod));
+    if (antes === Number(grupo)) continue;
     await eg('PUT', `/produtos/${cod}`, { codigoGrupoTributos: Number(grupo) });
-    mexidos.push(Number(cod));
+    mexidos.push({ cod: Number(cod), antes: antes || GRUPO_PADRAO });
   }
   return mexidos;
 }
 
-export async function devolverAoPadrao(codigos) {
-  for (const cod of codigos) {
+// Devolve cada produto ao grupo em que ele estava antes.
+export async function devolverGrupos(mexidos) {
+  for (const m of mexidos || []) {
     try {
-      await eg('PUT', `/produtos/${cod}`, { codigoGrupoTributos: GRUPO_PADRAO });
+      await eg('PUT', `/produtos/${m.cod}`, { codigoGrupoTributos: m.antes });
     } catch {
       // Se falhar, o produto fica no grupo errado. Não emite nota errada: a
       // conferência de CFOP na autorização barra antes de transmitir.

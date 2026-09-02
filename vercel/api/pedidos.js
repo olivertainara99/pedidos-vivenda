@@ -5,7 +5,7 @@
 
 import {
   eg, egTudo, erro, montarObs, lerObs, cfopPara, podeEmitirPelaApi, cfopsAplicados,
-  porNoGrupo, devolverAoPadrao, COD_GRUPO_DE_CFOP, GRUPO_PADRAO,
+  porNoGrupo, devolverGrupos, COD_GRUPO_DE_CFOP, GRUPO_PADRAO,
   TAG_APP, COD_VENDEDOR,
 } from './_egestor.js';
 import { exigir } from './_sessao.js';
@@ -124,7 +124,7 @@ async function criar(req, res, sessao) {
       produtos,
     });
   } finally {
-    if (mexidos.length) await devolverAoPadrao(mexidos);
+    if (mexidos.length) await devolverGrupos(mexidos);
   }
 
   return res.status(201).json({ codigo: criado.codigo, valorTotal: criado.valorTotal, cfop });
