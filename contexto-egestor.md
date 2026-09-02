@@ -200,6 +200,17 @@ Grupos cadastrados na conta:
 |---|---|---|---|
 | 1 | Tributação padrão (é o default) | x401 | ICMS 10 a 19%, ST 19%, MVA 20%, IPI 51, PIS/COFINS 01 |
 | 2 | REMESSA DE MERCADORIA | x917 | ICMS 40 (isento), PIS/COFINS 07, sem IPI |
+| 3 | VENDA REMETIDA ANTERIORMENTE | x113 | igual ao grupo 1 |
+| 4 | MEL DE CANA | x101 | ICMS 00 a 19% **sem ST**, PIS/COFINS 01, **IPI 50 a 3,25%** |
+
+## Tributação por produto (tabela do contador, 29/08/2026)
+| produto | CFOP | CST ICMS | ST | MVA | ICMS | IPI | grupo |
+|---|---|---|---|---|---|---|---|
+| Suco de cana (todos) | 5401 | 010 | sim | 20% | 19% | 0% | **1** |
+| Biscoito com mel | 5401 | 010 | sim | 20% | 19% | 0% | **1** |
+| Mel de cana | **5101** | 000 | não | — | 19% | **3,25%** | **4** |
+
+Consequência para o app: **uma nota comum pode ter CFOPs diferentes por item** (suco e biscoito em 5401, mel em 5101), o que é normal. Por isso o app **não força grupo em pedido comum** — cada produto já está no grupo certo. Só a FORMOSA força, porque ali a nota inteira muda de natureza, e depois cada produto volta ao grupo dele (`devolverGrupos`, que anota o grupo original de cada um em vez de assumir o 1).
 
 **Verificado na prática:** criei o orçamento 3711 (FORMOSA DUQUE), a Tainara trocou o grupo do item para REMESSA na tela, e a NF-e gerada **pela API** saiu com CFOP 5917, natOp "Remessa de mercadoria em consignação mercantil ou industrial", ICMS CST 40, PIS/COFINS CST 07, vProd 34,50 = vNF 34,50. Teste apagado depois.
 
