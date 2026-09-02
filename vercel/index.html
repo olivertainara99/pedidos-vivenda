@@ -267,6 +267,15 @@ input,button,select{font:inherit; color:inherit}
   function stPedido(p){
     return p.itens.reduce(function(s,i){ return s + Math.round(i.qtd*i.preco*0.038*100)/100; }, 0);
   }
+
+  // ST e IPI vêm calculados pelo eGestor quando existem; o ST cai na estimativa
+  // de 3,8% só se o servidor não mandou.
+  function stDe(p){
+    return typeof p.totalST === 'number' ? p.totalST
+      : (infoCfop(cfopDe(p)).tributa ? stPedido(p) : 0);
+  }
+  function ipiDe(p){ return typeof p.totalIPI === 'number' ? p.totalIPI : 0; }
+  function totalDaNota(p){ return p.totalProdutos + stDe(p) + ipiDe(p); }
   // sob o título do sabor, repetir "SUCO DE CANA DE ACUCAR COM LIMÃO" nove vezes
   // é ruído: fica só o tamanho. Mel e biscoito mantêm o nome inteiro.
   function rotuloCurto(d){
@@ -518,7 +527,7 @@ input,button,select{font:inherit; color:inherit}
     var info = infoCfop(atual);
     // o ST vem calculado pelo eGestor, não estimado aqui: ele reflete o grupo
     // de tributos que está de fato aplicado na venda
-    var st = typeof p.totalST === 'number' ? p.totalST : (info.tributa ? stPedido(p) : 0);
+    var st = stDe(p);
 
     var h = '<div class="' + classe + '"><div class="cab"><div>' +
       '<div class="cli">' + esc(p.cliente.nome) + '</div>' +
@@ -539,10 +548,12 @@ input,button,select{font:inherit; color:inherit}
       (em.pode ? '' : '<p class="explica" style="color:var(--perigo)">' + esc(em.motivo) + '</p>') +
       '</div>';
 
+    var ipi = ipiDe(p);
     h += '<div class="linhas-valor">' +
       '<div><span>Produtos</span><span>' + moeda(p.totalProdutos) + '</span></div>' +
-      '<div><span>ICMS-ST</span><span>' + (info.tributa ? moeda(st) : 'isento') + '</span></div>' +
-      '<div class="forte"><span>Total da nota</span><span>' + moeda(p.totalProdutos + st) + '</span></div></div>';
+      '<div><span>ICMS-ST</span><span>' + (st > 0 || info.tributa ? moeda(st) : 'isento') + '</span></div>' +
+      (ipi > 0 ? '<div><span>IPI</span><span>' + moeda(ipi) + '</span></div>' : '') +
+      '<div class="forte"><span>Total da nota</span><span>' + moeda(p.totalProdutos + st + ipi) + '</span></div></div>';
 
     h += '<div class="acoes">' +
       '<button class="btn miudo' + (d === 'autorizar' ? ' marcado' : '') + '" data-sim="' + p.codigo + '">Autorizar</button>' +
@@ -576,7 +587,7 @@ input,button,select{font:inherit; color:inherit}
     var c = contas();
     var h = '<div class="confirma"><h3>Confere antes de eu executar</h3><ul>';
     if(c.emitir.length) h += '<li><b class="alerta">' + c.emitir.length + ' nota(s) fiscal(is) serão emitidas agora</b> pela API, em produção: ' +
-      c.emitir.map(function(p){ return esc(p.cliente.nome) + ' (' + moeda(p.totalProdutos + stPedido(p)) + ')'; }).join('; ') + '</li>';
+      c.emitir.map(function(p){ return esc(p.cliente.nome) + ' (' + moeda(totalDaNota(p)) + ')'; }).join('; ') + '</li>';
     if(c.tela.length) h += '<li><b>' + c.tela.length + ' não sai(em) automática(s)</b> — ' +
       c.tela.map(function(p){ return esc(p.cliente.nome) + ' (CFOP ' + cfopDe(p) + ')'; }).join('; ') +
       '. Veja o aviso em vermelho no cartão: se for troca de grupo de tributos, faça no eGestor e volte aqui — ' +

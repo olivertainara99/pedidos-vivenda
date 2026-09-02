@@ -66,6 +66,8 @@ async function listar(req, res) {
       // avisamos aqui para ela ver antes de executar, não só na hora do erro
       emissao: podeEmitirPelaApi(obs.cfop, cfopsPorVenda[String(d.codigo)]),
       totalST: (d.produtos || []).reduce((s, p) => s + (Number(p.valorST) || 0), 0),
+      // o mel tem IPI de 3,25%; os demais produtos não têm
+      totalIPI: (d.produtos || []).reduce((s, p) => s + (Number(p.valorIPI) || 0), 0),
       dtCad: d.dtCad || d.dtVenda,
       publicURL: d.publicURL || null,
     });
