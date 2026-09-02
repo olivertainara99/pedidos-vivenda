@@ -55,6 +55,26 @@ export async function eg(metodo, caminho, corpo) {
   return j;
 }
 
+// Para arquivos (DANFE em PDF, XML): o eGestor devolve binário, não JSON.
+// O token fica aqui no servidor — por isso o app serve o arquivo em vez de
+// mandar o navegador buscar direto.
+export async function egBinario(caminho) {
+  const token = await acessar();
+  const r = await fetch(`${API}/v1${caminho}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const bytes = Buffer.from(await r.arrayBuffer());
+
+  // quando falha, vem JSON de erro em vez do arquivo
+  if (bytes.subarray(0, 1).toString() === '{') {
+    let j = null;
+    try { j = JSON.parse(bytes.toString()); } catch { /* corpo ilegível */ }
+    throw erro(r.status === 200 ? 400 : r.status, (j && j.errMsg) || 'O eGestor não devolveu o arquivo.');
+  }
+  if (!r.ok) throw erro(r.status, `O eGestor respondeu ${r.status}.`);
+  return bytes;
+}
+
 // listagens vêm paginadas em 50; junta tudo
 export async function egTudo(caminho, maxPaginas = 6) {
   const sep = caminho.includes('?') ? '&' : '?';

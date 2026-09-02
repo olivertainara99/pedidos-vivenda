@@ -87,6 +87,7 @@ export default async function handler(req, res) {
       return {
         codigo: p.codigo, cliente: p.cliente, itens: p.itens, total: p.total,
         cfop: p.cfop, dia: p.dia, quando: p.quando, estado, detalhe,
+        codNota: nota ? Number(nota.codigo) : null, numNota: nota ? nota.numero : null,
       };
     });
 

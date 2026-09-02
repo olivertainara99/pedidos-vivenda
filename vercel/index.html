@@ -544,7 +544,9 @@ input,button,select{font:inherit; color:inherit}
           '</div><span class="selo ' + seloDoEstado(p.estado) + '">' + esc(rotuloEstado(p.estado)) + '</span></div><ul>';
         p.itens.forEach(function(i){ h += '<li><span>' + esc(i.desc) + '</span><b>' + i.qtd + '</b></li>'; });
         h += '</ul><div class="total"><span>Produtos</span><span>' + moeda(p.total) + '</span></div>' +
-          '<div class="nota">' + esc(p.detalhe) + '</div></div>';
+          '<div class="nota">' + esc(p.detalhe) + '</div>' +
+          (p.estado === 'emitida' && p.codNota ? '<div class="acoes">' + botaoDanfe(p.codNota, p.numNota) + '</div>' : '') +
+          '</div>';
       });
       h += '</details>';
     });
@@ -682,7 +684,10 @@ input,button,select{font:inherit; color:inherit}
       h += '<div class="pedido"><div class="cab"><div><div class="cli">' + esc(r.cliente) + '</div>' +
         '<div class="loc">orçamento ' + r.codigo + '</div></div>' +
         '<span class="selo ' + cls + '">' + esc(r.rotulo) + '</span></div>' +
-        (r.detalhe ? '<div class="nota">' + esc(r.detalhe) + '</div>' : '') + '</div>';
+        (r.detalhe ? '<div class="nota">' + esc(r.detalhe) + '</div>' : '') +
+        (r.tipo === 'emitida' && r.codNota
+          ? '<div class="acoes">' + botaoDanfe(r.codNota, r.numNota) + '</div>' : '') +
+        '</div>';
     });
     return h + '</div>';
   }
@@ -835,6 +840,11 @@ input,button,select{font:inherit; color:inherit}
     if(conf) conf.addEventListener('click', executar);
     var canc = el('btnCancelar');
     if(canc) canc.addEventListener('click', function(){ estado.confirmando = false; render(); });
+
+    cada('[data-danfe]', function(b){
+      var p = String(b.getAttribute('data-danfe')).split('|');
+      mandarDanfe(p[0], p[1], b);
+    });
   }
 
   function cada(sel, fn){
@@ -942,7 +952,7 @@ input,button,select{font:inherit; color:inherit}
         }else{
           var r = await api('/api/autorizar', {method:'POST', body: JSON.stringify({codigo:p.codigo})});
           if(r.resultado === 'emitida'){
-            estado.resultados.push({codigo:p.codigo, cliente:p.cliente.nome, tipo:'emitida',
+            estado.resultados.push({codigo:p.codigo, cliente:p.cliente.nome, tipo:'emitida', codNota:r.codNota, numNota:r.numNota,
               rotulo:'NF-e ' + r.numNota, detalhe:'Autorizada. Chave ' + r.chave});
           }else if(r.resultado === 'aguardando-tela'){
             estado.resultados.push({codigo:p.codigo, cliente:p.cliente.nome, tipo:'tela',
@@ -959,6 +969,51 @@ input,button,select{font:inherit; color:inherit}
 
     estado.decisoes = {}; estado.ocupado = false;
     await carregarPedidos();
+  }
+
+  // ---------- DANFE ----------
+  // No celular abre o compartilhamento do sistema, com o WhatsApp na lista.
+  // No computador, baixa o arquivo.
+  async function mandarDanfe(codNota, numero, botao){
+    var rotulo = botao ? botao.textContent : '';
+    if(botao){ botao.disabled = true; botao.textContent = 'Buscando…'; }
+    try{
+      var r = await fetch('/api/danfe?codigo=' + codNota + '&numero=' + (numero || ''), {credentials:'same-origin'});
+      if(!r.ok){
+        var j = null; try{ j = await r.json(); }catch(e){}
+        throw new Error((j && j.erro) || 'Não consegui pegar o DANFE.');
+      }
+      var blob = await r.blob();
+      var nome = 'NFe-' + (numero || codNota) + '.pdf';
+      var arq = new File([blob], nome, {type:'application/pdf'});
+
+      if(navigator.canShare && navigator.canShare({files:[arq]})){
+        await navigator.share({files:[arq], title: nome});
+      }else{
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url; a.download = nome;
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(function(){ URL.revokeObjectURL(url); }, 5000);
+      }
+    }catch(e){
+      // cancelar o compartilhamento não é erro
+      if(e && e.name !== 'AbortError') alert(e.message);
+    }finally{
+      if(botao){ botao.disabled = false; botao.textContent = rotulo; }
+    }
+  }
+
+  // No celular o botão manda; no computador só baixa. O rótulo conta qual é.
+  function podeCompartilhar(){
+    try{ return !!(navigator.canShare && navigator.canShare({files:[new File([new Blob()], 'x.pdf', {type:'application/pdf'})]})); }
+    catch(e){ return false; }
+  }
+
+  function botaoDanfe(codNota, numero){
+    if(!codNota) return '';
+    return '<button class="btn miudo" data-danfe="' + codNota + '|' + (numero || '') + '">' +
+      (podeCompartilhar() ? 'Enviar DANFE' : 'Baixar DANFE') + '</button>';
   }
 
   // ---------- anexo ----------

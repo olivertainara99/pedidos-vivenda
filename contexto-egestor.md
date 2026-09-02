@@ -34,8 +34,13 @@ Base: `https://api.egestor.com.br/api/v1` · Auth: OAuth2, `POST /api/oauth/acce
 | 2. Resolver produtos | `GET /produtos?filtro=<nome>` → `codigo`, `precoVenda` |
 | 3. Criar a venda | `POST /vendas` (situacao 50 = Venda; 10 = Orçamento) → `codigo` da venda |
 | 4. Gerar a NF-e | `POST /vendas/{codVenda}/gerarNfe` com `{"enviar":true}` → `numNota`, `chNFe`, `cStat`, `xMotivo` |
+| 5. Pegar o PDF da nota | `GET /nfe/{codNota}/danfe` → PDF binário (~27 KB, 1 página) |
 
 Retorno de sucesso do passo 4: `"cStat": 100`, `"xMotivo": "Autorizado o uso da NF-e"`, `"autorizada": true`, `"nProt"`, `"ambiente": "1"` (produção).
+
+O DANFE e o XML (`GET /nfe/{codNota}/xml`) vêm como **binário, não JSON** — por isso `api/_egestor.js` tem o `egBinario()` separado do `eg()`. Quando falha, o corpo volta como JSON de erro em vez do arquivo, e é assim que o `egBinario` distingue os dois: olha se o primeiro byte é `{`.
+
+Cuidado: `GET /nfe/{cod}` **ignora o `fields=`** e devolve o XML inteiro junto. Na listagem `GET /nfe?dtIni=…` o `fields=` funciona. Por isso `api/danfe.js` não consulta a nota antes de baixar o PDF — seria uma chamada cara e à toa dentro do limite de 60/min.
 
 Também existe `POST /vendas/{cod}/gerarNfce` (NFC-e / cupom) e `GET /vendas/{cod}/gerarNfse` (serviço), caso um dia precise.
 
@@ -142,6 +147,8 @@ A fila fica no **aparelho** (`localStorage`, chave `vds_fila_<papel>`), não no 
 | **Autorizar (n)** | só Tainara | confere, autoriza/recusa/exclui — é onde a nota é emitida |
 | **Anexar PDF** | Jean e Tainara | lê o PDF que a loja manda e põe os pedidos na fila |
 | **Histórico** | Jean e Tainara | últimos 30 dias, agrupado por data, com o desfecho de cada pedido |
+
+Na **Autorizar**, cada nota que sai ganha um botão **Enviar DANFE**, e o mesmo botão aparece no **Histórico** em todo pedido já emitido. No celular ele abre o compartilhamento do Android/iOS — o WhatsApp está na lista, então o PDF vai para o Jean em dois toques. No computador o rótulo vira **Baixar DANFE** e o arquivo cai na pasta de downloads.
 
 ## Leitura do PDF de pedido (`api/importar.js`)
 Dois formatos, distinguidos pelo título — conferido que não colidem:
