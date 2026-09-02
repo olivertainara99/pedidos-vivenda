@@ -205,6 +205,7 @@ input,button,select{font:inherit; color:inherit}
     aba: 'autorizar',    // 'autorizar' (só Tainara) | 'lancar' | 'hoje'
     hoje: [],            // histórico agrupado por dia
     importados: null,    // pedidos lidos de um PDF, esperando confirmação
+    lojasImport: [],     // opções de loja quando o pareamento é por ordem
     lendoPdf: false,
     dias: 30,            // janela do histórico
     carregandoHoje: false,
@@ -467,11 +468,26 @@ input,button,select{font:inherit; color:inherit}
       }, 0);
       h += '<div class="pedido' + (p.aproveitavel ? '' : ' vai-nao') + '"><div class="cab"><div>' +
         '<div class="cli">' + esc(p.cliente ? p.cliente.nome : p.loja) + '</div>' +
-        '<div class="loc">' + esc(p.cliente ? p.cliente.local : 'CNPJ ' + p.cnpj) +
+        '<div class="loc">' + esc(p.cliente ? p.cliente.local : (p.cnpj ? 'CNPJ ' + p.cnpj : p.loja)) +
           (p.numero ? ' · pedido ' + esc(p.numero) : '') +
           (p.entrega ? ' · entrega ' + esc(p.entrega) : '') + '</div></div>' +
         '<span class="selo ' + (p.aproveitavel ? 'anotado' : 'erro') + '">' +
-        (p.aproveitavel ? 'pronto' : 'não dá') + '</span></div><ul>';
+        (p.aproveitavel ? 'pronto' : 'não dá') + '</span></div>';
+
+      // No relatório da FORMOSA a loja sai da ordem das tabelas, não de um CNPJ.
+      // Melhor pedir para confirmar do que emitir nota para a loja errada.
+      if(p.confirmarLoja && estado.lojasImport && estado.lojasImport.length){
+        h += '<div class="cfop"><p class="rot">Confirme a loja</p>' +
+          '<select class="campo" data-loja="' + p.idx + '">' +
+          estado.lojasImport.map(function(l){
+            return '<option value="' + l.codigo + '"' +
+              (p.cliente && p.cliente.codigo === l.codigo ? ' selected' : '') + '>' +
+              esc(l.nome) + '</option>';
+          }).join('') + '</select>' +
+          '<p class="explica">O relatório traz "' + esc(p.loja) + '". O app deduziu pela ordem das tabelas — confira.</p></div>';
+      }
+
+      h += '<ul>';
 
       p.itens.forEach(function(i){
         var nome = i.produto ? i.produto.descricao : i.descricaoPedido + ' (não cadastrado)';
@@ -799,6 +815,14 @@ input,button,select{font:inherit; color:inherit}
     var bf = el('btnParaFila');
     if(bf) bf.addEventListener('click', importadosParaFila);
 
+    Array.prototype.forEach.call(document.querySelectorAll('[data-loja]'), function(sel){
+      sel.addEventListener('change', function(){
+        var p = estado.importados[Number(sel.getAttribute('data-loja'))];
+        var l = estado.lojasImport.filter(function(x){ return x.codigo === Number(sel.value); })[0];
+        if(p && l) p.cliente = {codigo: l.codigo, nome: l.nome, local: p.cliente ? p.cliente.local : ''};
+      });
+    });
+
     var todos = el('btnTodos');
     if(todos) todos.addEventListener('click', function(){
       estado.pedidos.forEach(function(p){ estado.decisoes[p.codigo] = 'autorizar'; });
@@ -951,7 +975,10 @@ input,button,select{font:inherit; color:inherit}
     };
     leitor.onload = function(){
       api('/api/importar', {method:'POST', body: JSON.stringify({arquivo: leitor.result})})
-        .then(function(r){ estado.importados = r.pedidos || []; })
+        .then(function(r){
+          estado.importados = (r.pedidos || []).map(function(p, n){ p.idx = n; return p; });
+          estado.lojasImport = r.lojas || [];
+        })
         .catch(function(e){ estado.erro = e.message; estado.importados = null; })
         .finally(function(){ estado.lendoPdf = false; render(); });
     };

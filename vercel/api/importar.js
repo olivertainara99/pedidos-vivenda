@@ -159,6 +159,68 @@ function lerPedidoDeCompra(texto) {
   }];
 }
 
+// Relatório de produtos vendidos da FORMOSA — a base das notas com CFOP 5113.
+//
+// É uma tabela por filial. O PDF usa "x-none" como separador de célula, o que
+// resolve a ambiguidade dos números (o texto vem com os caracteres espaçados).
+// Linha vendida tem 5 células: nome, preço, quantidade, total, código.
+// Linha sem venda tem 4 (falta a quantidade) e é ignorada.
+//
+// ⚠️ Os rótulos das filiais são desenhados DEPOIS das tabelas, em blocos — não
+// intercalados. O pareamento é pela ordem, e por isso a tela EXIGE que a Tainara
+// confirme a loja de cada tabela antes de virar pedido.
+function lerRelatorioFormosa(bruto) {
+  if (!/x-none/.test(bruto) || !/QUANTIDADE/.test(bruto.replace(/\s+/g, ''))) return null;
+
+  const cel = bruto.split('x-none').map((c) => c.replace(/\s+/g, ''));
+  const tabelas = [];
+  const filiais = [];
+  let atual = [];
+
+  for (let i = 0; i < cel.length; i++) {
+    const c = cel[i];
+
+    const fil = c.match(/^FILIAL(.+?)M.SDE/);
+    if (fil) { filiais.push(fil[1]); continue; }
+
+    // "TOTAL:" com dois-pontos fecha a tabela; "TOTAL" sem eles é cabeçalho de coluna
+    if (c === 'TOTAL:') {
+      tabelas.push({ itens: atual, total: numeroBr((cel[i + 1] || '').replace(/^R\$/, '')) });
+      atual = [];
+      continue;
+    }
+
+    if (/^\d{6,7}-\d$/.test(c)) {
+      const qtd = cel[i - 2] || '';
+      if (!/^\d+,\d{4}$/.test(qtd)) continue; // sem quantidade = não vendeu
+      atual.push({
+        codigoFormosa: c,
+        descricaoPedido: cel[i - 4] || '',
+        ean: '',
+        qtd: Math.round(numeroBr(qtd)),
+        preco: numeroBr((cel[i - 3] || '').replace(/^R\$/, '')),
+        total: numeroBr((cel[i - 1] || '').replace(/^R\$/, '')),
+      });
+    }
+  }
+
+  if (!tabelas.length) return null;
+
+  return tabelas
+    .map((t, n) => ({
+      loja: filiais[n] || '',
+      rotuloFormosa: filiais[n] || null,
+      cnpj: null,
+      numero: null,
+      entrega: null,
+      itens: t.itens,
+      qtdDocumento: null,
+      totalDocumento: t.total,
+      confirmarLoja: true, // pareamento é por ordem: exige conferência humana
+    }))
+    .filter((p) => p.itens.length); // filial que não vendeu nada não vira pedido
+}
+
 // Confere as contas do próprio documento. Se não fecharem, não confiamos na leitura.
 function conferir(p) {
   const problemas = [];
@@ -197,34 +259,53 @@ export default async function handler(req, res) {
       throw erro(422, 'Esse PDF não tem texto — parece ser digitalização ou foto. Lance esse pedido à mão.');
     }
 
-    const brutos = lerPedidosDeCompra(texto) || lerPedidoDeCompra(texto);
+    const brutos = lerPedidosDeCompra(texto) || lerPedidoDeCompra(texto) || lerRelatorioFormosa(texto);
     if (!brutos) {
-      throw erro(422, 'Não reconheci o formato desse pedido. Por enquanto o app lê o "PEDIDO DE COMPRAS" do Mateus e o "PEDIDO DE COMPRA" da LIDER.');
+      throw erro(422, 'Não reconheci o formato desse arquivo. O app lê o "PEDIDO DE COMPRAS" do Mateus, o "PEDIDO DE COMPRA" da LIDER e o relatório de produtos vendidos da FORMOSA.');
     }
 
-    // cadastro para casar por CNPJ e por código próprio
+    // cadastro para casar cliente e produto
     const [contatos, produtos] = await Promise.all([
-      egTudo('/contatos?fields=codigo,nome,cpfcnpj,bairro,cidade'),
-      egTudo('/produtos?fields=codigo,descricao,codigoProprio,refEanGtin,precoVenda'),
+      egTudo('/contatos?fields=codigo,nome,cpfcnpj,bairro,cidade,obs'),
+      egTudo('/produtos?fields=codigo,descricao,codigoProprio,refEanGtin,precoVenda,anotacoesInternas'),
     ]);
     const porCnpj = new Map(contatos.map((c) => [soDigitos(c.cpfcnpj), c]));
     const porProprio = new Map();
     const porEan = new Map();
+    const porFormosaProd = new Map();
     produtos.forEach((p) => {
       const cp = String(p.codigoProprio || '').trim();
       const ean = String(p.refEanGtin || '').trim();
       if (cp) porProprio.set(cp, p);
       if (ean) porEan.set(ean, p);
+      // o código da FORMOSA vive nas observações internas do produto
+      const f = String(p.anotacoesInternas || '').match(/FORMOSA:\s*([\w.-]+)/i);
+      if (f) porFormosaProd.set(f[1].trim(), p);
+    });
+
+    // rótulo da filial da FORMOSA vive nas observações do contato
+    const porFormosaLoja = new Map();
+    const lojasFormosa = [];
+    contatos.forEach((c) => {
+      const f = String(c.obs || '').match(/FORMOSA:\s*([\w. -]+)/i);
+      if (!f) return;
+      porFormosaLoja.set(f[1].trim().toUpperCase(), c);
+      lojasFormosa.push({ codigo: c.codigo, nome: c.nome, rotulo: f[1].trim() });
     });
 
     const pedidos = brutos.map((p) => {
-      const cliente = porCnpj.get(p.cnpj) || null;
+      const cliente = p.rotuloFormosa
+        ? porFormosaLoja.get(String(p.rotuloFormosa).toUpperCase()) || null
+        : porCnpj.get(p.cnpj) || null;
       const contas = conferir(p);
 
       const itens = p.itens.map((i) => {
-        const prod = porProprio.get(i.codigoProprio) || porEan.get(i.ean) || null;
+        const prod = (i.codigoFormosa ? porFormosaProd.get(i.codigoFormosa) : null)
+          || porProprio.get(i.codigoProprio)
+          || porEan.get(i.ean)
+          || null;
         return {
-          codigoProprio: i.codigoProprio,
+          codigoProprio: i.codigoFormosa || i.codigoProprio,
           ean: i.ean,
           descricaoPedido: i.descricaoPedido,
           qtd: i.qtd,
@@ -236,7 +317,11 @@ export default async function handler(req, res) {
 
       const semProduto = itens.filter((i) => !i.produto);
       const impedimentos = [];
-      if (!cliente) impedimentos.push(`Cliente com CNPJ ${p.cnpj} não está no cadastro do eGestor.`);
+      if (!cliente) {
+        impedimentos.push(p.rotuloFormosa
+          ? `Filial "${p.rotuloFormosa}" não tem correspondência no cadastro. Ponha FORMOSA:${p.rotuloFormosa} nas observações do contato certo.`
+          : `Cliente com CNPJ ${p.cnpj} não está no cadastro do eGestor.`);
+      }
       semProduto.forEach((i) => impedimentos.push(`Produto ${i.codigoProprio} (${i.descricaoPedido}) não está no cadastro.`));
       contas.forEach((c) => impedimentos.push(`Conta do documento não fecha — ${c}.`));
 
@@ -248,6 +333,9 @@ export default async function handler(req, res) {
         cliente: cliente ? { codigo: cliente.codigo, nome: cliente.nome, local: [cliente.bairro, cliente.cidade].filter(Boolean).join(' · ') } : null,
         itens,
         totalPedido: p.totalDocumento,
+        // no relatório da FORMOSA a loja é deduzida pela ordem das tabelas:
+        // a tela pede confirmação em vez de confiar nisso
+        confirmarLoja: !!p.confirmarLoja,
         aproveitavel: impedimentos.length === 0,
         impedimentos,
       };
@@ -256,6 +344,8 @@ export default async function handler(req, res) {
     return res.status(200).json({
       pedidos,
       prontos: pedidos.filter((p) => p.aproveitavel).length,
+      // opções para a Tainara corrigir a loja quando o pareamento é por ordem
+      lojas: pedidos.some((p) => p.confirmarLoja) ? lojasFormosa : [],
     });
   } catch (e) {
     return res.status(e.status || 500).json({ erro: e.message });
