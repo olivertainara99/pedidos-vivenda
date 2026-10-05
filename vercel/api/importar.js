@@ -59,6 +59,86 @@ function textoDoPdf(buf) {
   return partes.join(' ').replace(/\s+/g, ' ');
 }
 
+// ---------- leitor de .xlsx ----------
+// Um .xlsx é um ZIP de XMLs. Em vez de trazer uma dependência só para isso,
+// lemos o diretório central do ZIP e inflamos as entradas que interessam —
+// mesma linha do leitor de PDF acima, que também usa só o zlib do Node.
+function entradasZip(buf) {
+  const fim = buf.lastIndexOf(Buffer.from('PK\x05\x06', 'latin1'));
+  if (fim < 0) return null;
+  const n = buf.readUInt16LE(fim + 10);
+  let p = buf.readUInt32LE(fim + 16);
+  const mapa = new Map();
+  for (let k = 0; k < n && p + 46 <= buf.length; k++) {
+    if (buf.readUInt32LE(p) !== 0x02014b50) break;
+    const metodo = buf.readUInt16LE(p + 10);
+    const compr = buf.readUInt32LE(p + 20);
+    const nomeLen = buf.readUInt16LE(p + 28);
+    const extraLen = buf.readUInt16LE(p + 30);
+    const comLen = buf.readUInt16LE(p + 32);
+    const desloc = buf.readUInt32LE(p + 42);
+    mapa.set(buf.subarray(p + 46, p + 46 + nomeLen).toString('utf8'), { metodo, compr, desloc });
+    p += 46 + nomeLen + extraLen + comLen;
+  }
+  return mapa;
+}
+
+function extrairZip(buf, ent) {
+  if (!ent) return null;
+  const nomeLen = buf.readUInt16LE(ent.desloc + 26);
+  const extraLen = buf.readUInt16LE(ent.desloc + 28);
+  const ini = ent.desloc + 30 + nomeLen + extraLen;
+  const dados = buf.subarray(ini, ini + ent.compr);
+  try {
+    return (ent.metodo === 0 ? dados : zlib.inflateRawSync(dados)).toString('utf8');
+  } catch { return null; }
+}
+
+function desescapar(s) {
+  return String(s || '')
+    .replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"').replace(/&apos;/g, "'")
+    .replace(/&amp;/g, '&');
+}
+
+// Devolve as linhas da aba pedida como mapas {coluna -> texto}: { B:'...', C:'...' }
+function linhasDaAba(buf, nomeAba) {
+  const zip = entradasZip(buf);
+  if (!zip) return null;
+
+  const wb = extrairZip(buf, zip.get('xl/workbook.xml'));
+  const rels = extrairZip(buf, zip.get('xl/_rels/workbook.xml.rels'));
+  if (!wb || !rels) return null;
+
+  const alvo = new Map([...rels.matchAll(/Id="([^"]+)"[^>]*Target="([^"]+)"/g)].map((m) => [m[1], m[2]]));
+  const aba = [...wb.matchAll(/<sheet[^>]*name="([^"]+)"[^>]*r:id="([^"]+)"/g)]
+    .find((m) => m[1].toUpperCase() === nomeAba.toUpperCase());
+  if (!aba) return null;
+
+  const xml = extrairZip(buf, zip.get('xl/' + alvo.get(aba[2]).replace(/^\//, '')));
+  if (!xml) return null;
+
+  // as strings de texto ficam num arquivo à parte, referenciadas por índice
+  const ssXml = extrairZip(buf, zip.get('xl/sharedStrings.xml')) || '';
+  const ss = [...ssXml.matchAll(/<si>([\s\S]*?)<\/si>/g)].map((m) =>
+    desescapar([...m[1].matchAll(/<t[^>]*>([\s\S]*?)<\/t>/g)].map((t) => t[1]).join(''))
+  );
+
+  return [...xml.matchAll(/<row[^>]*>([\s\S]*?)<\/row>/g)].map((r) => {
+    const cels = {};
+    for (const c of r[1].matchAll(/<c r="([A-Z]+)\d+"([^>]*)>([\s\S]*?)<\/c>/g)) {
+      const tipo = (c[2].match(/t="([^"]+)"/) || [, 'n'])[1];
+      const v = c[3].match(/<v>([\s\S]*?)<\/v>/);
+      let val;
+      if (tipo === 's') val = ss[Number(v && v[1])] || '';
+      else if (tipo === 'inlineStr') val = [...c[3].matchAll(/<t[^>]*>([\s\S]*?)<\/t>/g)].map((t) => t[1]).join('');
+      else val = v ? v[1] : '';
+      cels[c[1]] = desescapar(val).trim();
+    }
+    return cels;
+  }).filter((l) => Object.values(l).some(Boolean));
+}
+
 // Formato "PEDIDO DE COMPRAS" (Mateus): um PDF traz várias lojas.
 //
 // Cada pedido é   [cabeçalho] PEDIDO DE COMPRAS [corpo] Quantidade q v Vlr. TOTAL
@@ -221,6 +301,75 @@ function lerRelatorioFormosa(bruto) {
     .filter((p) => p.itens.length); // filial que não vendeu nada não vira pedido
 }
 
+// Planilha KARDEX do MATEUS (faturamento quinzenal da loja DOCA).
+//
+// A loja manda o que VENDEU no varejo na quinzena; a nota sai com 20% de
+// desconto sobre o valor unitário. Confirmado contra a NF-e 13648 de 05/10/2026:
+// os seis preços batem a três casas e o total fecha em R$ 4.877,64.
+//
+// Cuidado com as casas decimais: a coluna "Valor de Nota Unit" da planilha já
+// traz os 20% mas arredondada a 2 casas, e isso erra o total (daria R$ 4.876,51
+// naquela nota). Por isso o preço é recalculado aqui a partir da "Venda Liq.".
+//
+// As duas primeiras linhas depois do cabeçalho são totalizadores do pivô — a do
+// fornecedor (nós) e a da filial. Só o que vem depois é produto.
+const DESCONTO_KARDEX = 0.20;
+
+function lerKardexMateus(buf) {
+  const linhas = linhasDaAba(buf, 'KARDEX');
+  if (!linhas || !linhas.length) return null;
+
+  const iCab = linhas.findIndex((l) => /^FORNECEDOR$/i.test(l.B || ''));
+  if (iCab < 0) return null;
+
+  const corpo = linhas.slice(iCab + 1);
+  // a primeira linha de dados tem que ser a nossa, senão não é esta planilha
+  if (corpo.length < 3 || !/R\.?\s*T\.?\s*KALUME/i.test(corpo[0].B || '')) return null;
+
+  const loja = corpo[1] || {};
+  const periodo = (linhas[0] && linhas[0].B) || '';
+  const itens = [];
+
+  for (const l of corpo.slice(2)) {
+    const rotulo = l.B || '';
+    if (/^total/i.test(rotulo)) break;
+    const m = rotulo.match(/^(\d+)\s*-\s*(.+)$/);
+    if (!m) continue;
+
+    const qtd = Math.round(Number(l.C) || 0);
+    const vendaLiq = Math.round((Number(l.D) || 0) * 100) / 100;
+    if (!qtd || !vendaLiq) continue;
+
+    const varejo = vendaLiq / qtd;
+    itens.push({
+      codigoProprio: m[1],
+      descricaoPedido: m[2].trim(),
+      ean: '',
+      qtd,
+      preco: varejo,                                        // varejo, para conferir a conta
+      total: vendaLiq,
+      precoNota: Math.round(varejo * (1 - DESCONTO_KARDEX) * 1000) / 1000,
+    });
+  }
+
+  if (!itens.length) return null;
+
+  return [{
+    loja: loja.B || '',
+    cnpj: null,
+    numero: null,
+    entrega: periodo || null,
+    itens,
+    qtdDocumento: Math.round(Number(loja.C) || 0) || null,
+    totalDocumento: Math.round((Number(loja.D) || 0) * 100) / 100 || null,
+    // a planilha não traz CNPJ, só "223 - ... HIPER DOCAS": a loja é confirmada na tela
+    confirmarLoja: true,
+    codigoLojaMateus: ((loja.B || '').match(/^(\d+)\s*-/) || [, ''])[1],
+    precoDoDocumento: true,
+    descontoPct: DESCONTO_KARDEX * 100,
+  }];
+}
+
 // Confere as contas do próprio documento. Se não fecharem, não confiamos na leitura.
 function conferir(p) {
   const problemas = [];
@@ -242,7 +391,8 @@ function conferir(p) {
 }
 
 export default async function handler(req, res) {
-  if (!exigir(req, res)) return;
+  const sessao = exigir(req, res);
+  if (!sessao) return;
   if (req.method !== 'POST') return res.status(405).json({ erro: 'Método não suportado.' });
 
   try {
@@ -250,18 +400,31 @@ export default async function handler(req, res) {
     if (!base64) throw erro(400, 'Anexe o arquivo do pedido.');
 
     const buf = Buffer.from(String(base64).replace(/^data:[^,]*,/, ''), 'base64');
-    if (buf.subarray(0, 5).toString() !== '%PDF-') {
-      throw erro(400, 'Isso não parece um PDF. Por enquanto o app lê só PDF; foto ainda não.');
+    const ehPdf = buf.subarray(0, 5).toString() === '%PDF-';
+    const ehXlsx = buf.subarray(0, 2).toString('latin1') === 'PK';
+    if (!ehPdf && !ehXlsx) {
+      throw erro(400, 'Isso não parece um PDF nem uma planilha. O app lê PDF e .xlsx; foto ainda não.');
     }
 
-    const texto = textoDoPdf(buf).replace(/\s+/g, ' ');
-    if (texto.length < 200) {
-      throw erro(422, 'Esse PDF não tem texto — parece ser digitalização ou foto. Lance esse pedido à mão.');
-    }
-
-    const brutos = lerPedidosDeCompra(texto) || lerPedidoDeCompra(texto) || lerRelatorioFormosa(texto);
-    if (!brutos) {
-      throw erro(422, 'Não reconheci o formato desse arquivo. O app lê o "PEDIDO DE COMPRAS" do Mateus, o "PEDIDO DE COMPRA" da LIDER e o relatório de produtos vendidos da FORMOSA.');
+    let brutos;
+    if (ehXlsx) {
+      // a planilha carrega a regra de preco do MATEUS; quem lanca por ela e a Tainara
+      if (sessao.papel !== 'dona') {
+        throw erro(403, 'A planilha é a Tainara quem lança. Aqui dá para anexar o PDF do pedido da loja.');
+      }
+      brutos = lerKardexMateus(buf);
+      if (!brutos) {
+        throw erro(422, 'Não reconheci essa planilha. Esperava o KARDEX do MATEUS, com a coluna FORNECEDOR e as linhas de produto logo abaixo.');
+      }
+    } else {
+      const texto = textoDoPdf(buf).replace(/\s+/g, ' ');
+      if (texto.length < 200) {
+        throw erro(422, 'Esse PDF não tem texto — parece ser digitalização ou foto. Lance esse pedido à mão.');
+      }
+      brutos = lerPedidosDeCompra(texto) || lerPedidoDeCompra(texto) || lerRelatorioFormosa(texto);
+      if (!brutos) {
+        throw erro(422, 'Não reconheci o formato desse arquivo. O app lê o "PEDIDO DE COMPRAS" do Mateus, o "PEDIDO DE COMPRA" da LIDER e o relatório de produtos vendidos da FORMOSA.');
+      }
     }
 
     // cadastro para casar cliente e produto
@@ -293,10 +456,24 @@ export default async function handler(req, res) {
       lojasFormosa.push({ codigo: c.codigo, nome: c.nome, rotulo: f[1].trim() });
     });
 
+    // A planilha KARDEX não traz CNPJ, só "223 - ... HIPER DOCAS". Para adivinhar
+    // menos, aceitamos um MATEUS:<código> nas observações do contato — mesma
+    // convenção da FORMOSA — e, de todo jeito, a loja é confirmada na tela.
+    const porCodigoMateus = new Map();
+    const lojasMateus = [];
+    contatos.forEach((c) => {
+      if (!/^MATEUS SUPERMERCADOS/i.test(String(c.nome || ''))) return;
+      lojasMateus.push({ codigo: c.codigo, nome: c.nome, rotulo: '' });
+      const m = String(c.obs || '').match(/MATEUS:\s*(\d+)/i);
+      if (m) porCodigoMateus.set(m[1], c);
+    });
+
     const pedidos = brutos.map((p) => {
       const cliente = p.rotuloFormosa
         ? porFormosaLoja.get(String(p.rotuloFormosa).toUpperCase()) || null
-        : porCnpj.get(p.cnpj) || null;
+        : p.codigoLojaMateus
+          ? porCodigoMateus.get(p.codigoLojaMateus) || null
+          : porCnpj.get(p.cnpj) || null;
       const contas = conferir(p);
 
       const itens = p.itens.map((i) => {
@@ -310,14 +487,21 @@ export default async function handler(req, res) {
           descricaoPedido: i.descricaoPedido,
           qtd: i.qtd,
           precoPedido: i.preco,
+          // no KARDEX o preco da nota nasce do documento (varejo menos 20%), nao do cadastro
+          precoNota: i.precoNota != null ? i.precoNota : null,
           produto: prod ? { codigo: prod.codigo, descricao: prod.descricao, preco: Number(prod.precoVenda) || 0 } : null,
-          divergePreco: prod ? Math.abs((Number(prod.precoVenda) || 0) - i.preco) > TOLERANCIA : false,
+          // so faz sentido cobrar igualdade com o cadastro quando a nota usa o preco do cadastro
+          divergePreco: prod && !p.precoDoDocumento
+            ? Math.abs((Number(prod.precoVenda) || 0) - i.preco) > TOLERANCIA
+            : false,
         };
       });
 
       const semProduto = itens.filter((i) => !i.produto);
       const impedimentos = [];
-      if (!cliente) {
+      // na planilha a loja sai de um rótulo sem CNPJ: em vez de barrar, a tela pede
+      // que ela escolha — o pedido só vira fila depois dessa escolha
+      if (!cliente && !p.codigoLojaMateus) {
         impedimentos.push(p.rotuloFormosa
           ? `Filial "${p.rotuloFormosa}" não tem correspondência no cadastro. Ponha FORMOSA:${p.rotuloFormosa} nas observações do contato certo.`
           : `Cliente com CNPJ ${p.cnpj} não está no cadastro do eGestor.`);
@@ -336,6 +520,9 @@ export default async function handler(req, res) {
         // no relatório da FORMOSA a loja é deduzida pela ordem das tabelas:
         // a tela pede confirmação em vez de confiar nisso
         confirmarLoja: !!p.confirmarLoja,
+        // a tela precisa saber que o preco vem do documento para nao usar o do cadastro
+        precoDoDocumento: !!p.precoDoDocumento,
+        descontoPct: p.descontoPct || 0,
         aproveitavel: impedimentos.length === 0,
         impedimentos,
       };
@@ -345,7 +532,9 @@ export default async function handler(req, res) {
       pedidos,
       prontos: pedidos.filter((p) => p.aproveitavel).length,
       // opções para a Tainara corrigir a loja quando o pareamento é por ordem
-      lojas: pedidos.some((p) => p.confirmarLoja) ? lojasFormosa : [],
+      lojas: brutos.some((p) => p.codigoLojaMateus)
+        ? lojasMateus
+        : pedidos.some((p) => p.confirmarLoja) ? lojasFormosa : [],
     });
   } catch (e) {
     return res.status(e.status || 500).json({ erro: e.message });

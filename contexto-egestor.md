@@ -156,20 +156,34 @@ Detalhes que economizam toque: assim que a leva é emitida, todas já saem marca
 
 No celular o botão abre o compartilhamento do Android/iOS — o WhatsApp está na lista. No computador o rótulo vira **Baixar PDF**.
 
-## Leitura do PDF de pedido (`api/importar.js`)
-Dois formatos, distinguidos pelo título — conferido que não colidem:
+## Leitura do pedido anexado (`api/importar.js`)
+Quatro formatos. Primeiro o arquivo é separado pelos bytes iniciais — `%PDF-` é PDF, `PK` é planilha `.xlsx`. Os três de PDF se distinguem pelo título, conferido que não colidem:
 
 | rede | título | pedidos por arquivo | particularidades |
 |---|---|---|---|
 | **Mateus** | `PEDIDO DE COMPRAS` (plural) | **vários** | itens com código próprio + EAN de 13 dígitos |
 | **LIDER** | `PEDIDO DE COMPRA` (singular) | **um** | preço com 3 casas (`6,550`); colunas do meio (desconto, despesas, IPI, frete) podem vir vazias, então o **total é o último número da linha**; a "Referência" de 6 dígitos é o nosso código próprio |
 | **FORMOSA** | relatório de produtos vendidos | **um por filial** | é a base das notas **5113** — importar logada como Tainara. Ver detalhes abaixo |
+| **MATEUS DOCA** | planilha `.xlsx`, aba `KARDEX` | **um** | faturamento quinzenal, preço = varejo **menos 20%**. Só a Tainara lança. Ver detalhes abaixo |
 
 ### O relatório da FORMOSA
 - O PDF usa **`x-none` como separador de célula**, o que resolve a ambiguidade dos números (o texto vem com os caracteres espaçados: `1 1 , 0 0 0 0`).
 - Linha vendida tem **5 células** (nome, preço, quantidade, total, código); linha sem venda tem 4 — falta a quantidade — e é ignorada. Filial que não vendeu nada não vira pedido.
 - ⚠️ **Pegadinha:** a coluna do cabeçalho se chama `TOTAL` e a linha que fecha a tabela é `TOTAL:`. Sem exigir os dois-pontos, sai o dobro de tabelas.
 - ⚠️ **Os rótulos das filiais são desenhados DEPOIS das tabelas, em blocos** — não colados a elas. O pareamento é **pela ordem** e não dá para provar. Por isso a tela mostra um **seletor de loja** em cada pedido e pede conferência. Emitir para a loja errada é o erro mais caro aqui.
+
+### A planilha do MATEUS DOCA (`.xlsx`)
+Não é pedido: é o **relatório do que a loja vendeu** na quinzena, e vira a nota de faturamento.
+
+- Lemos o `.xlsx` **sem dependência nenhuma** — um xlsx é um ZIP de XMLs, então abrimos o diretório central do ZIP e inflamos com o `zlib` do próprio Node, mesma linha do leitor de PDF.
+- Interessa só a aba **`KARDEX`** (a `BASE` são os dados brutos, com centenas de milhares de linhas — nunca abrir).
+- Depois do cabeçalho `FORNECEDOR`, as **duas primeiras linhas são totalizadores do pivô** (a nossa e a da filial). Produto é o que vem depois, até `Total Geral`. Se a primeira linha não for a R T KALUME, recusamos o arquivo em vez de adivinhar.
+- **A regra dos 20%:** `preço da nota = (Venda Líq. ÷ Qtd.) × 0,80`, com **3 casas decimais**.
+- ⚠️ **Não usar a coluna `Valor de Nota Unit`.** Ela já traz os 20%, mas arredondada a 2 casas, e isso erra o total: na NF-e 13648 daria R$ 4.876,51 em vez dos R$ 4.877,64 corretos. Conferência: o total tem que bater com `Venda Líq. total × 0,80`.
+- Como o preço **vem do documento e não do cadastro**, o pedido viaja com `precoDoDocumento: true` e cada item leva `precoNota`. A tela usa esse preço na fila e não acusa divergência com o catálogo (ela seria sempre verdadeira — varejo R$ 8,49 contra catálogo R$ 6,99).
+- ⚠️ **A planilha não tem CNPJ**, só o rótulo `223 - MATEUS SUPERMERCADOS S.A. HIPER DOCAS`. A loja é **sempre confirmada na tela**. Para já vir pré-selecionada, ponha `MATEUS:223` nas observações do contato — mesma convenção da FORMOSA.
+- Só a Tainara importa planilha: o endpoint devolve 403 para o Jean. O PDF da loja continua valendo para os dois.
+- Validado contra a NF-e **13648** (05/10/2026): os seis preços batem a três casas e o total fecha em R$ 4.877,64.
 
 ### Mapas de código, guardados no eGestor (não no código)
 A FORMOSA usa códigos próprios diferentes dos do Mateus — `981779-4` em vez de `281893`. Como `codigoProprio` já está ocupado pelo código do Mateus:
@@ -178,6 +192,7 @@ A FORMOSA usa códigos próprios diferentes dos do Mateus — `981779-4` em vez 
 |---|---|---|
 | código do produto na FORMOSA | `anotacoesInternas` do produto | `FORMOSA:981779-4` |
 | rótulo da filial da FORMOSA | `obs` do contato | `FORMOSA:DUQUE` |
+| código da filial do MATEUS na planilha | `obs` do contato | `MATEUS:223` |
 
 Assim a Tainara corrige sozinha no eGestor se a FORMOSA mudar algo, sem mexer no app. Os 11 produtos foram mapeados com o **preço conferido um a um** contra o relatório.
 

@@ -353,7 +353,7 @@ input,button,select{font:inherit; color:inherit}
     var itens = estado.papel === 'dona'
       ? [['autorizar', 'Autorizar' + (estado.pedidos.length ? ' (' + estado.pedidos.length + ')' : '')],
          ['lancar', 'Lançar'],
-         ['anexo', 'Anexar PDF'],
+         ['anexo', 'Anexar'],
          ['hoje', 'Histórico']]
       : [['lancar', 'Lançar'], ['anexo', 'Anexar PDF'], ['hoje', 'Histórico']];
     return '<div class="abas">' + itens.map(function(i){
@@ -451,10 +451,15 @@ input,button,select{font:inherit; color:inherit}
 
   // ---------- anexar PDF ----------
   function telaAnexo(){
-    var h = '<div class="bloco"><p class="rot">Anexar pedido em PDF</p>' +
-      '<p class="vazio" style="padding:0 0 12px">Aquele PDF que a loja manda. O app lê, você confere, ' +
-      'e só então os pedidos vão para a fila.</p>' +
-      '<input type="file" id="inArquivo" accept="application/pdf,.pdf" class="campo">' +
+    // a planilha do MATEUS traz a regra de preco propria (varejo menos 20%),
+    // entao so aparece para a Tainara; o PDF da loja continua valendo para os dois
+    var comPlanilha = estado.papel === 'dona';
+    var h = '<div class="bloco"><p class="rot">Anexar pedido' + (comPlanilha ? '' : ' em PDF') + '</p>' +
+      '<p class="vazio" style="padding:0 0 12px">Aquele PDF que a loja manda' +
+      (comPlanilha ? ', ou a planilha quinzenal do MATEUS (.xlsx)' : '') +
+      '. O app lê, você confere, e só então os pedidos vão para a fila.</p>' +
+      '<input type="file" id="inArquivo" accept="' +
+      (comPlanilha ? 'application/pdf,.pdf,.xlsx' : 'application/pdf,.pdf') + '" class="campo">' +
       '<div class="acoes"><button class="btn principal" id="btnLer"' + (estado.lendoPdf ? ' disabled' : '') + '>' +
       (estado.lendoPdf ? '<span class="girando"></span>Lendo…' : 'Ler o arquivo') + '</button></div></div>';
 
@@ -469,7 +474,7 @@ input,button,select{font:inherit; color:inherit}
 
     lidos.forEach(function(p){
       var soma = p.itens.reduce(function(s,i){
-        return s + (i.produto ? i.qtd * i.produto.preco : 0);
+        return s + (i.produto ? i.qtd * precoDoItem(p, i) : 0);
       }, 0);
       h += '<div class="pedido' + (p.aproveitavel ? '' : ' vai-nao') + '"><div class="cab"><div>' +
         '<div class="cli">' + esc(p.cliente ? p.cliente.nome : p.loja) + '</div>' +
@@ -489,21 +494,36 @@ input,button,select{font:inherit; color:inherit}
               (p.cliente && p.cliente.codigo === l.codigo ? ' selected' : '') + '>' +
               esc(l.nome) + '</option>';
           }).join('') + '</select>' +
-          '<p class="explica">O relatório traz "' + esc(p.loja) + '". O app deduziu pela ordem das tabelas — confira.</p></div>';
+          '<p class="explica">O documento traz "' + esc(p.loja) + '". ' +
+          (p.precoDoDocumento
+            ? 'A planilha não tem CNPJ, então a loja não dá para deduzir com segurança — escolha.'
+            : 'O app deduziu pela ordem das tabelas — confira.') + '</p></div>';
       }
 
       h += '<ul>';
 
       p.itens.forEach(function(i){
         var nome = i.produto ? i.produto.descricao : i.descricaoPedido + ' (não cadastrado)';
-        h += '<li><span>' + esc(nome) + (i.divergePreco
-              ? ' <b style="color:var(--perigo)">preço do pedido ' + moeda(i.precoPedido) +
-                ', cadastro ' + moeda(i.produto.preco) + '</b>' : '') +
-          '</span><b>' + i.qtd + '</b></li>';
+        var extra = '';
+        if(i.divergePreco){
+          extra = ' <b style="color:var(--perigo)">preço do pedido ' + moeda(i.precoPedido) +
+                  ', cadastro ' + moeda(i.produto.preco) + '</b>';
+        }else if(p.precoDoDocumento && i.precoNota != null){
+          extra = ' <span style="color:var(--fraca)">varejo ' + moeda(i.precoPedido) +
+                  ' → nota R$ ' + i.precoNota.toFixed(3).replace('.', ',') + '</span>';
+        }
+        h += '<li><span>' + esc(nome) + extra + '</span><b>' + i.qtd + '</b></li>';
       });
 
-      h += '</ul><div class="total"><span>Produtos pelo seu preço</span><span>' + moeda(soma) + '</span></div>';
-      if(p.totalPedido) h += '<div class="nota">documento diz ' + moeda(p.totalPedido) + '</div>';
+      h += '</ul><div class="total"><span>' +
+        (p.precoDoDocumento ? 'Produtos já com o desconto' : 'Produtos pelo seu preço') +
+        '</span><span>' + moeda(soma) + '</span></div>';
+      if(p.precoDoDocumento){
+        h += '<div class="nota">' + p.descontoPct + '% sobre o valor unitário do varejo. ' +
+          'Confira: venda líquida ' + moeda(p.totalPedido || 0) + ' × 0,' + (100 - p.descontoPct) +
+          ' = ' + moeda(Math.round((p.totalPedido || 0) * (100 - p.descontoPct)) / 100) + '.</div>';
+      }
+      if(p.totalPedido && !p.precoDoDocumento) h += '<div class="nota">documento diz ' + moeda(p.totalPedido) + '</div>';
       (p.impedimentos || []).forEach(function(x){
         h += '<div class="nota" style="color:var(--perigo)">' + esc(x) + '</div>';
       });
@@ -1151,6 +1171,13 @@ input,button,select{font:inherit; color:inherit}
     leitor.readAsDataURL(f);
   }
 
+  // No KARDEX o preco da nota e o do documento (varejo menos 20%), nao o do
+  // cadastro. Em todo o resto vale o cadastro, como sempre.
+  function precoDoItem(p, i){
+    if(p.precoDoDocumento && i.precoNota != null) return i.precoNota;
+    return i.produto ? i.produto.preco : 0;
+  }
+
   function importadosParaFila(){
     var prontos = (estado.importados || []).filter(function(p){ return p.aproveitavel; });
     if(!prontos.length) return;
@@ -1159,8 +1186,9 @@ input,button,select{font:inherit; color:inherit}
       var itens = [], total = 0;
       p.itens.forEach(function(i){
         if(!i.produto) return;
-        itens.push({codigo:i.produto.codigo, desc:i.produto.descricao, qtd:i.qtd, preco:i.produto.preco});
-        total += i.qtd * i.produto.preco;
+        var pr = precoDoItem(p, i);
+        itens.push({codigo:i.produto.codigo, desc:i.produto.descricao, qtd:i.qtd, preco:pr});
+        total += i.qtd * pr;
       });
       if(!itens.length) return;
       estado.fila.push({
