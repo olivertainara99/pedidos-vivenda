@@ -489,6 +489,10 @@ input,button,select{font:inherit; color:inherit}
       if(p.confirmarLoja && estado.lojasImport && estado.lojasImport.length){
         h += '<div class="cfop"><p class="rot">Confirme a loja</p>' +
           '<select class="campo" data-loja="' + p.idx + '">' +
+          // sem loja casada o campo comeca vazio: a primeira da lista apareceria
+          // escolhida sem ninguem ter escolhido, e sair nota para a loja errada
+          // e o erro mais caro daqui
+          (p.cliente ? '' : '<option value="">— escolha a loja —</option>') +
           estado.lojasImport.map(function(l){
             return '<option value="' + l.codigo + '"' +
               (p.cliente && p.cliente.codigo === l.codigo ? ' selected' : '') + '>' +
@@ -531,9 +535,15 @@ input,button,select{font:inherit; color:inherit}
     });
 
     if(prontos.length){
-      h += '<div class="acoes"><button class="btn principal" id="btnParaFila">' +
+      var semLoja = prontos.filter(function(p){ return !p.cliente; }).length;
+      h += '<div class="acoes"><button class="btn principal" id="btnParaFila"' +
+        (semLoja ? ' disabled' : '') + '>' +
         'Pôr ' + prontos.length + (prontos.length === 1 ? ' pedido' : ' pedidos') + ' na fila</button>' +
         '<button class="btn miudo" id="btnDescartar">Descartar</button></div>';
+      if(semLoja){
+        h += '<p class="vazio" style="color:var(--perigo)">Escolha a loja ' +
+          (semLoja === 1 ? 'do pedido' : 'dos ' + semLoja + ' pedidos') + ' acima para liberar.</p>';
+      }
     }else{
       h += '<div class="acoes"><button class="btn miudo" id="btnDescartar">Descartar</button></div>';
     }
@@ -866,8 +876,10 @@ input,button,select{font:inherit; color:inherit}
     Array.prototype.forEach.call(document.querySelectorAll('[data-loja]'), function(sel){
       sel.addEventListener('change', function(){
         var p = estado.importados[Number(sel.getAttribute('data-loja'))];
+        if(!p) return;
         var l = estado.lojasImport.filter(function(x){ return x.codigo === Number(sel.value); })[0];
-        if(p && l) p.cliente = {codigo: l.codigo, nome: l.nome, local: p.cliente ? p.cliente.local : ''};
+        p.cliente = l ? {codigo: l.codigo, nome: l.nome, local: p.cliente ? p.cliente.local : ''} : null;
+        render(); // o botao de mandar para a fila depende disso
       });
     });
 
@@ -1181,6 +1193,12 @@ input,button,select{font:inherit; color:inherit}
   function importadosParaFila(){
     var prontos = (estado.importados || []).filter(function(p){ return p.aproveitavel; });
     if(!prontos.length) return;
+    // rede de seguranca: sem loja nao da para montar o pedido, e um erro aqui
+    // deixaria o botao mudo
+    if(prontos.some(function(p){ return !p.cliente; })){
+      alert('Escolha a loja antes de mandar para a fila.');
+      return;
+    }
 
     prontos.forEach(function(p){
       var itens = [], total = 0;
