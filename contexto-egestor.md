@@ -238,6 +238,23 @@ Cópia local das variáveis prontas para colar: `variaveis-vercel.txt` (fora do 
 
 ---
 
+## Nota que fica "criada" sem ser transmitida
+Acontece quando a SEFAZ cai no meio da emissão: o eGestor **cria** a NF-e e falha ao transmitir ("Erro de comunicação com a SEFAZ"). Ocorreu em 04/11/2026 com duas notas.
+
+Por que encalhava: o `autorizar.js` converte o orçamento em venda **antes** de emitir, e a porta de entrada exige situação 10. Com a venda já convertida e sem nota, o pedido saía da fila sem como voltar.
+
+**A API não tem endpoint de retransmissão.** Conferidos todos os de NF-e: `/v1/nfe/salvar` é importação de XML, e a única chamada que emite é `POST /v1/vendas/{cod}/gerarNfe`.
+
+**`gerarNfe` numa venda que já tem nota cria uma nota NOVA, não reaproveita** — confirmado pela Tainara, que resolveu assim pela tela do eGestor. É por isso que a recuperação é "emitir outra", não "retransmitir".
+
+⚠️ **O risco dessa recuperação:** se a primeira nota tiver sido autorizada de verdade, a segunda vira nota duplicada. A tela do eGestor não impede. O app impede: antes de emitir ele lê todas as notas da venda e recusa se alguma estiver com situação 50 (autorizada).
+
+Desde 05/11/2026 o app faz isso sozinho — Histórico → "falta transmitir" → botão **"Emitir nota nova"**. Também consulta `POST /v1/nfe/status` antes de converter o orçamento: se a SEFAZ não responder `107`, não converte nada e o pedido continua na fila.
+
+A API **não apaga nota**, então cada reemissão deixa o rascunho velho para trás. O app informa o número; a limpeza é manual no eGestor.
+
+Link direto para uma nota (`/fiscal/#/nfe/<codigo>`) só funciona já logado: deslogada, o eGestor manda ao login e descarta o trecho da nota (o `r=` guarda só `/fiscal/`).
+
 # CFOP — as três naturezas de operação
 
 Conferido nos XMLs de notas reais da conta (não é suposição):
