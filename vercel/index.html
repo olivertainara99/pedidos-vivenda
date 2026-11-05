@@ -590,6 +590,7 @@ input,button,select{font:inherit; color:inherit}
         h += '</ul><div class="total"><span>Produtos</span><span>' + moeda(p.total) + '</span></div>' +
           '<div class="nota">' + esc(p.detalhe) + '</div>' +
           (p.estado === 'emitida' && p.codNota ? caixaDanfe(p.codNota, p.numNota) : '') +
+          botaoTransmitir(p) +
           '</div>';
       });
       h += '</details>';
@@ -607,13 +608,26 @@ input,button,select{font:inherit; color:inherit}
     return etiqueta;
   }
 
+  // Nao existe endpoint para retransmitir uma nota ja criada: a unica chamada que
+  // emite e gerarNfe, e numa venda que ja tem nota ela criaria uma segunda. Entao
+  // o botao leva a nota aberta no eGestor, onde o "Salvar e enviar" retransmite.
+  function botaoTransmitir(p){
+    if(p.estado !== 'rascunho' || !p.codNota) return '';
+    return '<div class="acoes">' +
+      '<a class="btn miudo principal" target="_blank" rel="noopener" ' +
+      'href="https://v4.egestor.com.br/fiscal/#/nfe/' + encodeURIComponent(p.codNota) + '">' +
+      'Transmitir no eGestor</a>' +
+      '<span class="preco" style="font-size:12.5px">abre a nota ' +
+      (p.numNota ? esc(p.numNota) + ' ' : '') + 'para você conferir e enviar</span></div>';
+  }
+
   function rotuloEstado(e){
     return {aguardando:'aguardando', autorizada:'autorizada', emitida:'emitida',
-            cancelada:'cancelada', rascunho:'rascunho'}[e] || e;
+            cancelada:'cancelada', rascunho:'falta transmitir'}[e] || e;
   }
   function seloDoEstado(e){
     return {aguardando:'anotado', autorizada:'autorizado', emitida:'emitida',
-            cancelada:'erro', rascunho:'fila'}[e] || 'fila';
+            cancelada:'erro', rascunho:'erro'}[e] || 'fila';
   }
   function horaDe(s){
     var m = String(s).match(/(\d{2}):(\d{2})/);

@@ -78,7 +78,10 @@ export default async function handler(req, res) {
         const s = Number(nota.situacao);
         if (s === 50) { estado = 'emitida'; detalhe = 'NF-e ' + nota.numero; }
         else if (s === 90) { estado = 'cancelada'; detalhe = 'NF-e ' + nota.numero + ' cancelada'; }
-        else { estado = 'rascunho'; detalhe = 'nota criada, ainda não transmitida'; }
+        // a nota existe no eGestor mas nao foi transmitida — quase sempre a SEFAZ
+        // caiu no meio da emissao. Nao da para retransmitir pela API (nao existe
+        // endpoint), entao a tela manda a Tainara direto para a nota la.
+        else { estado = 'rascunho'; detalhe = 'nota ' + nota.numero + ' criada, falta transmitir'; }
       } else if (p.situacaoVenda === 50) {
         estado = 'autorizada';
         detalhe = 'autorizada, nota ainda não gerada';

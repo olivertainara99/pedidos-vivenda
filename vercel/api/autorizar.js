@@ -55,6 +55,19 @@ export default async function handler(req, res) {
       throw erro(409, veredito.motivo);
     }
 
+    // A SEFAZ fora do ar e o que mais estraga esta rota: o eGestor chega a criar a
+    // nota, a transmissao falha, e o pedido fica convertido em venda sem nota —
+    // fora da fila e sem como voltar. Perguntamos antes; se ela nao estiver em
+    // operacao, nada e convertido e o pedido continua na fila para mais tarde.
+    // Nao elimina o risco (ela pode cair entre a pergunta e a emissao), mas fecha
+    // quase toda a janela.
+    let sefaz = null;
+    try { sefaz = await eg('POST', '/nfe/status'); } catch { sefaz = null; }
+    if (sefaz && Number(sefaz.status_code) !== 107) {
+      throw erro(503, `A SEFAZ não está em operação agora (${sefaz.status_code} — ${sefaz.msg || 'sem detalhe'}). ` +
+        'O pedido continua na fila; tente de novo daqui a pouco.');
+    }
+
     // 1) converte o orçamento em venda
     await eg('PUT', `/vendas/${cod}`, {
       situacao: 50,
@@ -62,7 +75,27 @@ export default async function handler(req, res) {
     });
 
     // 2) grupo conferido: emite de verdade, com o CFOP que a regra definiu
-    const nota = await eg('POST', `/vendas/${cod}/gerarNfe`, { enviar: true, contigOffline: false });
+    let nota;
+    try {
+      nota = await eg('POST', `/vendas/${cod}/gerarNfe`, { enviar: true, contigOffline: false });
+    } catch (falha) {
+      // A chamada estourou. O eGestor pode ter criado a nota mesmo assim e so nao
+      // ter conseguido transmitir — foi o que aconteceu em 04/11/2026. Olhamos se
+      // sobrou nota na venda para dizer exatamente o que fazer, em vez de um erro
+      // seco. Reemitir pelo app criaria uma segunda nota, entao nunca oferecemos.
+      let criada = null;
+      try {
+        const ligadas = await eg('GET', `/vendas/${cod}/nfe`);
+        criada = (Array.isArray(ligadas) ? ligadas : (ligadas && ligadas.itens) || [])[0] || null;
+      } catch { criada = null; }
+      if (criada) {
+        throw erro(502,
+          `A nota ${criada.numero || criada.codigo} foi criada no eGestor, mas a transmissão para a SEFAZ falhou ` +
+          `(${falha.message}). Ela está no Histórico como "falta transmitir" — use o botão de lá para enviar. ` +
+          'Não autorize de novo: sairia nota duplicada.');
+      }
+      throw falha;
+    }
 
     const autorizada = nota && (nota.autorizada === true || Number(nota.cStat) === 100);
     return res.status(200).json({
