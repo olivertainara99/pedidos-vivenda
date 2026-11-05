@@ -25,6 +25,54 @@ export default async function handler(req, res) {
     if (!(venda.tags || []).includes(TAG_APP)) {
       throw erro(409, 'Esse orçamento não foi criado por este app.');
     }
+
+    // ---- reemitir: a venda ja existe e a nota dela nao foi transmitida ----
+    //
+    // Nao e retransmissao: a API nao tem esse endpoint. A gerarNfe numa venda que
+    // ja tem nota cria uma nota NOVA — confirmado pela Tainara, que fez isso pela
+    // tela do eGestor em 04/11/2026 quando a SEFAZ caiu no meio da emissao.
+    //
+    // O perigo e emitir a segunda quando a primeira na verdade foi autorizada: ai
+    // sairiam duas notas validas para a mesma venda. Por isso conferimos a
+    // situacao de TODAS as notas ligadas a venda antes, e so seguimos se nenhuma
+    // estiver autorizada. A nota velha fica como rascunho orfao e e apagada a mao.
+    if (acao === 'reemitir') {
+      if (Number(venda.situacao) !== 50) {
+        throw erro(409, 'Esta venda não está no estado de reemissão — recarregue a página.');
+      }
+      const ligadas = await eg('GET', `/vendas/${cod}/nfe`);
+      const notas = Array.isArray(ligadas) ? ligadas : (ligadas && ligadas.itens) || [];
+      if (!notas.length) {
+        throw erro(409, 'Esta venda não tem nota nenhuma para reemitir.');
+      }
+      const autorizada = notas.find((n) => Number(n.situacao) === 50);
+      if (autorizada) {
+        throw erro(409,
+          `A nota ${autorizada.numero || autorizada.codigo} desta venda está AUTORIZADA. ` +
+          'Emitir outra criaria nota duplicada. Se ela estiver errada, cancele antes.');
+      }
+
+      let sefaz = null;
+      try { sefaz = await eg('POST', '/nfe/status'); } catch { sefaz = null; }
+      if (sefaz && Number(sefaz.status_code) !== 107) {
+        throw erro(503, `A SEFAZ não está em operação agora (${sefaz.status_code} — ${sefaz.msg || 'sem detalhe'}). ` +
+          'Tente de novo daqui a pouco.');
+      }
+
+      const nova = await eg('POST', `/vendas/${cod}/gerarNfe`, { enviar: true, contigOffline: false });
+      const ok = nova && (nova.autorizada === true || Number(nova.cStat) === 100);
+      return res.status(200).json({
+        resultado: ok ? 'emitida' : 'rejeitada',
+        codigo: cod,
+        numNota: nova && nova.numNota,
+        chave: nova && nova.chNFe,
+        cStat: nova && nova.cStat,
+        xMotivo: nova && nova.xMotivo,
+        codNota: nova && nova.codNota,
+        sobrou: notas.map((n) => n.numero || n.codigo),
+      });
+    }
+
     if (Number(venda.situacao) !== 10) {
       throw erro(409, 'Este pedido já saiu da fila — recarregue a página.');
     }

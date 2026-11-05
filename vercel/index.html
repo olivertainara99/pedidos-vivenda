@@ -613,12 +613,43 @@ input,button,select{font:inherit; color:inherit}
   // o botao leva a nota aberta no eGestor, onde o "Salvar e enviar" retransmite.
   function botaoTransmitir(p){
     if(p.estado !== 'rascunho' || !p.codNota) return '';
-    return '<div class="acoes">' +
-      '<a class="btn miudo principal" target="_blank" rel="noopener" ' +
-      'href="https://v4.egestor.com.br/fiscal/#/nfe/' + encodeURIComponent(p.codNota) + '">' +
-      'Transmitir no eGestor</a>' +
-      '<span class="preco" style="font-size:12.5px">abre a nota ' +
-      (p.numNota ? esc(p.numNota) + ' ' : '') + 'para você conferir e enviar</span></div>';
+    return '<div class="nota">A nota <b>' + esc(p.numNota || p.codNota) + '</b> ficou criada no eGestor ' +
+      'sem ser transmitida — quase sempre a SEFAZ caiu no meio.</div>' +
+      '<div class="acoes">' +
+      '<button class="btn miudo principal" data-reemitir="' + p.codigo + '">Emitir nota nova</button>' +
+      '<a class="btn miudo" target="_blank" rel="noopener" ' +
+      'href="https://v4.egestor.com.br/fiscal/#/nfe/' + encodeURIComponent(p.codNota) + '">Ver no eGestor</a>' +
+      '</div>';
+  }
+
+  // Emite outra nota a partir da mesma venda — e o que a Tainara fazia a mao.
+  // O servidor so deixa passar se nenhuma nota da venda estiver autorizada.
+  async function reemitir(botao, codVenda){
+    var p = (estado.hoje || []).reduce(function(achado, g){
+      return achado || g.pedidos.filter(function(x){ return x.codigo === codVenda; })[0];
+    }, null);
+    var nome = p ? p.cliente : ('venda ' + codVenda);
+    var velha = (p && p.numNota) ? p.numNota : 'que falhou';
+    var aviso = 'Emitir uma nota NOVA para ' + nome + '?' + '\n\n' +
+      'A nota ' + velha + ' continua la como rascunho - apague depois no eGestor ' +
+      'para nao transmitir sem querer.';
+    if(!confirm(aviso)) return;
+    var rotulo = botao.textContent;
+    botao.disabled = true; botao.textContent = 'Emitindo…';
+    try{
+      var r = await api('/api/autorizar', {method:'POST', body: JSON.stringify({codigo: codVenda, acao: 'reemitir'})});
+      if(r.resultado === 'emitida'){
+        alert('NF-e ' + r.numNota + ' autorizada.' + '\n\n' +
+              'Chave ' + (r.chave || '') + '\n\n' +
+              'Rascunho que sobrou: ' + (r.sobrou || []).join(', ') + ' - apague no eGestor.');
+      }else{
+        alert('A SEFAZ não autorizou: ' + (r.cStat ? r.cStat + ' — ' : '') + (r.xMotivo || 'sem motivo informado'));
+      }
+    }catch(e){
+      alert(e.message);
+    }
+    botao.disabled = false; botao.textContent = rotulo;
+    carregarHoje();
   }
 
   function rotuloEstado(e){
@@ -879,6 +910,10 @@ input,button,select{font:inherit; color:inherit}
 
     var bh = el('btnHoje');
     if(bh) bh.addEventListener('click', carregarHoje);
+
+    cada('[data-reemitir]', function(elm){
+      reemitir(elm, Number(elm.getAttribute('data-reemitir')));
+    });
 
     var bl = el('btnLer');
     if(bl) bl.addEventListener('click', lerArquivo);
