@@ -203,9 +203,9 @@ Não é pedido: é o **relatório do que a loja vendeu** na quinzena, e vira a n
 
 O mapa embutido casa pelo **`codigo` interno** do eGestor, não por `codigoProprio` — vários produtos nem têm `codigoProprio` (o limão aparece só como `04/05/06`). Loja ou produto sem correspondência **barra o pedido** com a instrução exata de como cadastrar; nunca se escolhe à mão (escolher poderia emitir para a loja errada). `06-BRAZ`, `08-GENTIL` e `09-MARAMBAIA` aparecem no filtro do relatório mas **não existem no cadastro**.
 
-⚠️ **Duas premissas que a Tainara ainda precisa confirmar** (o app não tem como saber):
-1. **Preço:** como o relatório não traz valor, a nota sai pelo **preço do cadastro**. Se a Cidade tem preço ou desconto próprio (como o Mateus Doca, com 20%), é preciso dizer — a tela mostra o valor de cada linha e avisa.
-2. **CFOP:** a regra automática dá **5401** (venda normal) porque o nome não é FORMOSA. Se a Cidade trabalha em consignação e este relatório fecha a consignação, o certo é **5113**, e `cfopPara()` precisa reconhecê-la.
+✅ **Confirmado pela Tainara em 10/11/2026:**
+1. **Preço:** é o do **cadastro** — a Cidade não tem desconto próprio (diferente do Mateus Doca, com 20%). Como o relatório não traz valor, a nota sai por ele; a tela mostra o valor de cada linha.
+2. **CFOP:** **5401**, venda normal. É o que a regra automática já dá (o nome não é FORMOSA), então a Cidade **não** é consignação e `cfopPara()` não precisa de regra nova.
 
 ### Mapas de código, guardados no eGestor (não no código)
 A FORMOSA usa códigos próprios diferentes dos do Mateus — `981779-4` em vez de `281893`. Como `codigoProprio` já está ocupado pelo código do Mateus:
