@@ -154,7 +154,7 @@ Toda nota emitida — na **Autorizar** e no **Histórico** — ganha uma caixinh
 
 Detalhes que economizam toque: assim que a leva é emitida, todas já saem marcadas (é o que ela faz em seguida); no histórico, cada dia com mais de uma nota tem um **Marcar as N notas do dia**; e marcar/desmarcar não redesenha a tela, para não fechar os dias que ela abriu.
 
-No celular o botão abre o compartilhamento do Android/iOS — o WhatsApp está na lista. No computador o rótulo vira **Baixar PDF**.
+A barra tem sempre **Salvar PDF** (baixa o arquivo para o aparelho) e, quando o navegador oferece compartilhar arquivos, também **Enviar PDF** (abre o compartilhamento do Android/iOS — o WhatsApp está na lista). ⚠️ Isso inclui o **Chrome e o Edge do Windows**, que oferecem compartilhar: antes o app achava que era celular e mostrava só "Enviar PDF", sem nenhum botão que salvasse o arquivo no computador. Com três botões a barra não cabe numa linha no celular, então ela quebra em duas (texto em cima, botões embaixo).
 
 ### Como a lista do Autorizar se mantém em dia (desde 10/11/2026)
 Ela mora no eGestor (orçamentos com a tag `APP_PEDIDOS`), então a tela da Tainara só sabe do que o Jean mandou **se perguntar**. Antes só perguntava ao abrir o app, depois de autorizar e no botão "Atualizar lista" — que nem aparecia com a lista vazia. Pedido novo ficava invisível até recarregar a página.

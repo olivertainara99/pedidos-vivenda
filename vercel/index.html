@@ -36,7 +36,7 @@ body{
   font-family:Archivo,"Segoe UI",system-ui,sans-serif;
   font-size:16px; line-height:1.45; -webkit-text-size-adjust:100%;
 }
-.env{max-width:680px; margin:0 auto; padding:20px 16px 136px}
+.env{max-width:680px; margin:0 auto; padding:20px 16px 164px}
 
 .topo{display:flex; align-items:center; gap:14px; margin-bottom:10px; padding-bottom:14px; border-bottom:1px solid var(--borda)}
 .topo h1{font-family:"Instrument Serif",Georgia,serif; font-weight:400; font-size:32px; line-height:1.05; margin:0; letter-spacing:-.01em}
@@ -172,6 +172,11 @@ input,button,select{font:inherit; color:inherit}
 .barra .cont{font-size:13px; color:var(--fraca); line-height:1.3}
 .barra .cont b{color:var(--tinta); font-size:15px; display:block; font-variant-numeric:tabular-nums}
 .barra .grupo-btn{display:flex; gap:8px}
+/* a barra do DANFE tem tres botoes: no celular nao cabem ao lado do texto, entao
+   quebra em duas linhas (texto em cima, botoes embaixo a direita) em vez de espremer */
+.barra .danfe-barra{width:100%; display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:8px 12px}
+.barra .danfe-barra .grupo-btn{margin-left:auto}
+.barra .danfe-barra .btn{white-space:nowrap}
 
 .aviso{border:1px solid color-mix(in srgb,var(--perigo) 40%,var(--borda)); background:color-mix(in srgb,var(--perigo) 8%,transparent); border-radius:9px; padding:11px 13px; font-size:13.5px; margin-bottom:14px}
 .aviso b{display:block; margin-bottom:3px}
@@ -1150,7 +1155,8 @@ input,button,select{font:inherit; color:inherit}
     return 'NFe-' + n[0] + '-a-' + n[n.length-1] + '.pdf';
   }
 
-  async function mandarDanfes(botao){
+  // soSalvar: guarda o arquivo no aparelho em vez de abrir o compartilhamento
+  async function mandarDanfes(botao, soSalvar){
     var notas = marcadas();
     if(!notas.length) return;
     var rotulo = botao ? botao.textContent : '';
@@ -1169,7 +1175,7 @@ input,button,select{font:inherit; color:inherit}
       var nome = nomeDoPdf(notas);
       var arq = new File([blob], nome, {type:'application/pdf'});
 
-      if(navigator.canShare && navigator.canShare({files:[arq]})){
+      if(!soSalvar && navigator.canShare && navigator.canShare({files:[arq]})){
         await navigator.share({files:[arq], title: nome});
       }else{
         var url = URL.createObjectURL(blob);
@@ -1186,7 +1192,8 @@ input,button,select{font:inherit; color:inherit}
     }
   }
 
-  // No celular o botão manda; no computador só baixa. O rótulo conta qual é.
+  // Se o aparelho oferece compartilhar arquivos (celular, mas também Chrome/Edge no
+  // Windows), a barra mostra "Enviar PDF" além do "Salvar PDF", que existe sempre.
   function podeCompartilhar(){
     try{ return !!(navigator.canShare && navigator.canShare({files:[new File([new Blob()], 'x.pdf', {type:'application/pdf'})]})); }
     catch(e){ return false; }
@@ -1220,18 +1227,24 @@ input,button,select{font:inherit; color:inherit}
   function barraDanfe(){
     var n = marcadas().length;
     if(!n) return '';
-    return '<div class="cont"><b>' + n + (n === 1 ? ' nota marcada' : ' notas marcadas') + '</b>' +
+    return '<div class="danfe-barra"><div class="cont"><b>' + n + (n === 1 ? ' nota marcada' : ' notas marcadas') + '</b>' +
       (n === 1 ? 'o DANFE dela' : 'todas num arquivo só') + '</div>' +
       '<div class="grupo-btn"><button class="btn miudo" id="btnLimparDanfe">Limpar</button>' +
-      '<button class="btn principal" id="btnMandarDanfe">' +
-      (podeCompartilhar() ? 'Enviar PDF' : 'Baixar PDF') + '</button></div>';
+      // Salvar existe sempre. Antes o botão virava "Enviar" assim que o navegador
+      // oferecia compartilhar — e o Chrome/Edge do Windows oferece, então no
+      // computador a única opção era a janela de compartilhar do sistema.
+      '<button class="btn' + (podeCompartilhar() ? ' miudo' : ' principal') + '" id="btnSalvarDanfe">Salvar PDF</button>' +
+      (podeCompartilhar() ? '<button class="btn principal" id="btnMandarDanfe">Enviar PDF</button>' : '') +
+      '</div></div>';
   }
 
   function ligarBarraDanfe(){
     var lim = el('btnLimparDanfe');
     if(lim) lim.addEventListener('click', limparMarcadas);
+    var sal = el('btnSalvarDanfe');
+    if(sal) sal.addEventListener('click', function(){ mandarDanfes(sal, true); });
     var man = el('btnMandarDanfe');
-    if(man) man.addEventListener('click', function(){ mandarDanfes(man); });
+    if(man) man.addEventListener('click', function(){ mandarDanfes(man, false); });
   }
 
   // ---------- anexo ----------
