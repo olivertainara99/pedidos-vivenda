@@ -156,6 +156,16 @@ Detalhes que economizam toque: assim que a leva é emitida, todas já saem marca
 
 No celular o botão abre o compartilhamento do Android/iOS — o WhatsApp está na lista. No computador o rótulo vira **Baixar PDF**.
 
+### Como a lista do Autorizar se mantém em dia (desde 10/11/2026)
+Ela mora no eGestor (orçamentos com a tag `APP_PEDIDOS`), então a tela da Tainara só sabe do que o Jean mandou **se perguntar**. Antes só perguntava ao abrir o app, depois de autorizar e no botão "Atualizar lista" — que nem aparecia com a lista vazia. Pedido novo ficava invisível até recarregar a página.
+
+Agora atualiza sozinha em quatro momentos: ao **entrar na aba Autorizar**, ao **voltar para o app** (outra aba ou outro aplicativo), **depois que ela mesma manda** um pedido, e por uma **conferência a cada 25 s** enquanto está na aba Autorizar com a tela visível.
+
+- ⚠️ A conferência **não busca a lista inteira**: chama `GET /api/pedidos?so=codigos` (1 chamada ao eGestor, só os códigos) e só pede a lista completa se o conjunto mudou. O limite da API é **60 chamadas por minuto** e a lista completa custa até ~30 (uma por pedido) mais o relatório de CFOP — conferir a cada poucos segundos com a lista completa estouraria o limite, e a Tainara precisa dele inteiro na hora de emitir.
+- A lista completa busca os detalhes **5 por vez** (`emLotes`) em vez de um depois do outro: mesma quantidade de chamadas, bem menos espera, sem passar de 5 em voo.
+- Não confere durante a emissão, na tela de confirmação, na aba Histórico nem com a tela escondida. Buscas não se atropelam: apertar "Atualizar" no meio de uma automática agenda uma segunda em vez de ser ignorado.
+- A tela mostra **"Atualizada às HH:MM"**, para ela saber se pode confiar no que vê.
+
 ## Leitura do pedido anexado (`api/importar.js`)
 Quatro formatos. Primeiro o arquivo é separado pelos bytes iniciais — `%PDF-` é PDF, `PK` é planilha `.xlsx`. Os três de PDF se distinguem pelo título, conferido que não colidem:
 

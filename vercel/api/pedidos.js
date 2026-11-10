@@ -36,18 +36,43 @@ export default async function handler(req, res) {
   }
 }
 
+// Roda `fn` sobre cada item com no máximo `limite` em voo, devolvendo na mesma ordem.
+// O eGestor aceita 60 chamadas por minuto: poucas de cada vez dá velocidade sem
+// estourar esse limite, que a Tainara também precisa para emitir nota.
+async function emLotes(itens, limite, fn) {
+  const saida = new Array(itens.length);
+  let proximo = 0;
+  async function trabalhador() {
+    while (proximo < itens.length) {
+      const k = proximo++;
+      saida[k] = await fn(itens[k], k);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limite, itens.length) }, trabalhador));
+  return saida;
+}
+
 async function listar(req, res) {
   const resumo = await egTudo(`/vendas?tipo=10&filtro=${TAG_APP}&fields=codigo,nomeContato,valorTotal,dtVenda,dtCad,tags`, 3);
 
   const emOrdem = resumo.sort((a, b) => b.codigo - a.codigo).slice(0, MAX_DETALHAR);
+  const codigos = emOrdem.map((r) => r.codigo);
+
+  // A tela do Autorizar confere de tempos em tempos se chegou pedido novo. Para isso
+  // basta saber QUAIS pedidos existem — 1 chamada em vez de uma por pedido mais o
+  // relatório de CFOP. Só se a lista mudou é que ela pede a versão completa.
+  if (req.query && req.query.so === 'codigos') {
+    return res.status(200).json({ codigos });
+  }
 
   // uma chamada só cobre a fila toda
   let cfopsPorVenda = {};
   try { cfopsPorVenda = await cfopsAplicados(); } catch { /* sem isso o app avisa que não leu */ }
 
+  const detalhes = await emLotes(emOrdem, 5, (r) => eg('GET', `/vendas/${r.codigo}`));
+
   const pedidos = [];
-  for (const r of emOrdem) {
-    const d = await eg('GET', `/vendas/${r.codigo}`);
+  for (const d of detalhes) {
     const obs = lerObs(d.customizado && d.customizado.xCampo1);
     pedidos.push({
       codigo: d.codigo,
@@ -76,6 +101,7 @@ async function listar(req, res) {
   return res.status(200).json({
     pedidos: pedidos.filter((p) => !p.recusado),
     recusados: pedidos.filter((p) => p.recusado),
+    codigos, // o que existia neste instante: a tela compara com isso para saber se mudou
   });
 }
 

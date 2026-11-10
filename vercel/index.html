@@ -676,12 +676,22 @@ input,button,select{font:inherit; color:inherit}
   }
 
   // ---------- Tainara ----------
+  function atualizadaEm(){
+    if(!estado.pedidosEm) return '';
+    var d = new Date(estado.pedidosEm);
+    var z = function(n){ return (n < 10 ? '0' : '') + n; };
+    return 'Atualizada às ' + z(d.getHours()) + ':' + z(d.getMinutes()) + ' · confere sozinha a cada poucos segundos';
+  }
+
   function telaDona(){
     if(!estado.pedidos) return '<div class="bloco"><p class="vazio">Carregando…</p></div>';
     var h = '<div class="bloco' + (estado.pedidos.length ? ' destaque' : '') + '">' +
-      '<p class="rot">Aguardando sua autorização (' + estado.pedidos.length + ')</p>';
+      '<p class="rot">Aguardando sua autorização (' + estado.pedidos.length + ')</p>' +
+      '<p class="nota" style="margin:0 0 10px">' + (estado.atualizando ? 'Atualizando…' : atualizadaEm()) + '</p>';
     if(!estado.pedidos.length){
-      h += '<p class="vazio">Nenhum pedido esperando. Quando o Jean mandar, aparece aqui.</p>';
+      h += '<p class="vazio">Nenhum pedido esperando. Quando o Jean mandar, aparece aqui.</p>' +
+        // sem lista não havia botão nenhum, e a única saída era recarregar a página
+        '<div class="acoes"><button class="btn miudo" id="btnRecarregar">Atualizar lista</button></div>';
     }else{
       var soma = estado.pedidos.reduce(function(s,p){ return s + p.totalProdutos; }, 0);
       h += '<p class="vazio" style="padding-bottom:12px">' + estado.pedidos.length +
@@ -916,6 +926,8 @@ input,button,select{font:inherit; color:inherit}
       estado.confirmando = false;
       render();
       if(estado.aba === 'hoje') carregarHoje();
+      // mostra a lista que já tem e atualiza por baixo, em vez de esperar o botão
+      else if(estado.aba === 'autorizar' && estado.papel === 'dona') carregarPedidos();
     });
 
     var bh = el('btnHoje');
@@ -948,7 +960,9 @@ input,button,select{font:inherit; color:inherit}
       render();
     });
     var rec = el('btnRecarregar');
-    if(rec) rec.addEventListener('click', carregarPedidos);
+    // função própria: passar carregarPedidos direto entregaria o evento do clique
+    // no lugar do parâmetro "silencioso"
+    if(rec) rec.addEventListener('click', function(){ carregarPedidos(); });
 
     var conf = el('btnConfirmar');
     if(conf) conf.addEventListener('click', executar);
@@ -1068,6 +1082,8 @@ input,button,select{font:inherit; color:inherit}
       estado.erro = e.message + (enviados ? ' — ' + enviados + ' já tinham ido.' : '');
     }finally{
       estado.ocupado = false; render();
+      // quando é a Tainara quem manda, a lista do Autorizar já fica em dia
+      if(estado.papel === 'dona') carregarPedidos(true);
     }
   }
 
@@ -1293,14 +1309,55 @@ input,button,select{font:inherit; color:inherit}
     render();
   }
 
-  async function carregarPedidos(){
+  // ---------- manter a lista do Autorizar em dia ----------
+  // Antes ela só era buscada ao abrir o app, depois de autorizar e no botão
+  // "Atualizar lista" — que nem existia com a lista vazia. Pedido que o Jean
+  // mandava (ou que ela mesma mandava) não aparecia até recarregar.
+  var buscandoPedidos = false, refazerPedidos = false;
+
+  async function carregarPedidos(silencioso){
+    // buscas não se atropelam: se já tem uma rodando, pede uma segunda logo depois
+    // em vez de engolir o pedido (apertou "Atualizar" enquanto a automática rodava)
+    if(buscandoPedidos){ refazerPedidos = true; return; }
+    buscandoPedidos = true;
+    if(silencioso !== true){ estado.atualizando = true; render(); }
     try{
       var r = await api('/api/pedidos');
       estado.pedidos = r.pedidos || [];
       estado.recusados = r.recusados || [];
+      estado.codigosVistos = r.codigos || [];
+      estado.pedidosEm = Date.now();
     }catch(e){ estado.erro = e.message; }
+    estado.atualizando = false;
+    buscandoPedidos = false;
     render();
+    if(refazerPedidos){ refazerPedidos = false; carregarPedidos(true); }
   }
+
+  // Confere de tempos em tempos se chegou pedido novo. Gasta 1 chamada ao eGestor
+  // (só os códigos) e só pede a lista completa se mudou: o limite é de 60 por
+  // minuto, e a Tainara precisa dele inteiro na hora de emitir.
+  function podeConferir(){
+    return estado.papel === 'dona' && estado.aba === 'autorizar' && !document.hidden &&
+      !estado.ocupado && !estado.confirmando && !buscandoPedidos;
+  }
+  async function conferirNovos(){
+    if(!podeConferir()) return;
+    try{
+      var r = await api('/api/pedidos?so=codigos');
+      if((r.codigos || []).join(',') !== (estado.codigosVistos || []).join(',')) carregarPedidos(true);
+    }catch(e){ /* sem alarde: a próxima volta tenta de novo */ }
+  }
+  setInterval(conferirNovos, 25000);
+
+  // voltou para o app (outra aba, outro aplicativo, tela desbloqueada): atualiza já
+  function voltouAoApp(){
+    if(document.hidden || !podeConferir()) return;
+    if(Date.now() - (estado.pedidosEm || 0) < 8000) return; // visibilitychange e focus chegam juntos
+    carregarPedidos(true);
+  }
+  document.addEventListener('visibilitychange', voltouAoApp);
+  window.addEventListener('focus', voltouAoApp);
 
   async function iniciar(){
     try{ estado.nome = localStorage.getItem('vds_nome') || ''; }catch(e){}
