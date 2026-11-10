@@ -185,6 +185,28 @@ Não é pedido: é o **relatório do que a loja vendeu** na quinzena, e vira a n
 - Só a Tainara importa planilha: o endpoint devolve 403 para o Jean. O PDF da loja continua valendo para os dois.
 - Validado contra a NF-e **13648** (05/10/2026): os seis preços batem a três casas e o total fecha em R$ 4.877,64.
 
+### O relatório de vendas da rede CIDADE (PDF do TOTVS)
+`ANÁLISE ABC DE VENDAS - VAREJO`, fornecedor `1818 - R. T. KALUME`. É o que a loja **vendeu** no período, não pedido de compra — só a Tainara lança (o Jean recebe 403).
+
+- Traz **só quantidade**: as colunas de valor saem vazias e **não há CNPJ**. A loja vem como rótulo (`Empresa: 1 - 01-PEDREIRA`) e o produto pelo **código dele na Cidade** (`156655`), que não é o nosso.
+- ⚠️ **O `textoDoPdf` simples não lê esse PDF** (devolve lixo no corpo da tabela). Dois motivos: o corpo usa fonte TrueType em *subconjunto* — os bytes são códigos 1..58 que só viram letra pelo mapa `/ToUnicode` — e a página sai com `/Rotate 90`, com cada coluna num trecho solto por saltos enormes no `TJ` (`115671`, `-13941`), de modo que a ordem do arquivo não é a da tela.
+- Por isso existe o extrator **com posição** (`linhasPosicionadas` em `api/importar.js`): interpreta o conteúdo de verdade (fonte, matriz de texto, CTM, largura dos glifos), decodifica pelo mapa e devolve as linhas como a pessoa vê. **Só entra se nenhum leitor de texto simples reconheceu o arquivo**, então os formatos antigos não mudam. Testado também em DANFE (outro gerador de PDF).
+- Linha de produto: `Pos. | Cód. | Produto | Embal | Quantidade`. A quantidade tem **3 casas** (`11,000`); valor em dinheiro tem 2 — é assim que se distinguem. Conferência: soma dos itens = `Sub Total Empresa` (o app recusa se não fechar).
+- ⚠️ **`5 de 6 Produto(s) Listado(s)`**: se a lista saiu menor que o universo, falta linha (no relatório de outubro/2026 a numeração começa na posição 2). O app mostra um aviso amarelo — **confirme com a Cidade se não faltou venda** antes de emitir.
+
+**Mapas** (mesma convenção da FORMOSA — guardados no eGestor, sem mexer no código):
+
+| o quê | onde mora | formato | já embutido no código |
+|---|---|---|---|
+| código do produto na Cidade | `anotacoesInternas` do produto | `CIDADE:156655` | 156655→1 LITRO · 156663→330ML · 209538→LIMÃO 1L · 209511→LIMÃO 330ML · 209520→LIMÃO 500ML |
+| loja da Cidade | `obs` do contato | `CIDADE:PEDREIRA` | PEDREIRA e PVARGAS, por CNPJ |
+
+O mapa embutido casa pelo **`codigo` interno** do eGestor, não por `codigoProprio` — vários produtos nem têm `codigoProprio` (o limão aparece só como `04/05/06`). Loja ou produto sem correspondência **barra o pedido** com a instrução exata de como cadastrar; nunca se escolhe à mão (escolher poderia emitir para a loja errada). `06-BRAZ`, `08-GENTIL` e `09-MARAMBAIA` aparecem no filtro do relatório mas **não existem no cadastro**.
+
+⚠️ **Duas premissas que a Tainara ainda precisa confirmar** (o app não tem como saber):
+1. **Preço:** como o relatório não traz valor, a nota sai pelo **preço do cadastro**. Se a Cidade tem preço ou desconto próprio (como o Mateus Doca, com 20%), é preciso dizer — a tela mostra o valor de cada linha e avisa.
+2. **CFOP:** a regra automática dá **5401** (venda normal) porque o nome não é FORMOSA. Se a Cidade trabalha em consignação e este relatório fecha a consignação, o certo é **5113**, e `cfopPara()` precisa reconhecê-la.
+
 ### Mapas de código, guardados no eGestor (não no código)
 A FORMOSA usa códigos próprios diferentes dos do Mateus — `981779-4` em vez de `281893`. Como `codigoProprio` já está ocupado pelo código do Mateus:
 
@@ -193,6 +215,7 @@ A FORMOSA usa códigos próprios diferentes dos do Mateus — `981779-4` em vez 
 | código do produto na FORMOSA | `anotacoesInternas` do produto | `FORMOSA:981779-4` |
 | rótulo da filial da FORMOSA | `obs` do contato | `FORMOSA:DUQUE` |
 | código da filial do MATEUS na planilha | `obs` do contato | `MATEUS:223` |
+| código do produto / loja na CIDADE | `anotacoesInternas` do produto / `obs` do contato | `CIDADE:156655` / `CIDADE:PEDREIRA` |
 
 Assim a Tainara corrige sozinha no eGestor se a FORMOSA mudar algo, sem mexer no app. Os 11 produtos foram mapeados com o **preço conferido um a um** contra o relatório.
 

@@ -370,18 +370,524 @@ function lerKardexMateus(buf) {
   }];
 }
 
+// ---------- extrator de texto COM POSIÇÃO ----------
+//
+// O textoDoPdf acima só serve para PDF cujo texto está em strings entre
+// parênteses, na ordem de leitura. Relatórios de sistema (o do TOTVS da rede
+// Cidade, por exemplo) quebram as duas coisas:
+//
+//  - o corpo da tabela usa fonte TrueType em subconjunto: os bytes da string são
+//    códigos 1..58 que só viram letra pelo mapa /ToUnicode da fonte;
+//  - a página sai girada (/Rotate 90) e cada coluna é um trecho separado, solto
+//    por saltos enormes no TJ — a ordem do arquivo não é a ordem da tela.
+//
+// Aqui o conteúdo da página é interpretado de verdade: acompanhamos fonte,
+// matriz de texto e CTM, decodificamos cada string pelo mapa da fonte, avançamos
+// pela largura dos glifos para saber onde cada trecho cai, e só então
+// devolvemos as LINHAS como a pessoa as vê, com as células em ordem.
+//
+// Só entra em cena quando os leitores de texto simples não reconhecem o arquivo.
+
+function inflarSeguro(buf) {
+  try { return zlib.inflateSync(buf); } catch { return null; }
+}
+
+// Todos os objetos do arquivo: os soltos e os que moram dentro de /ObjStm.
+function objetosDoPdf(buf) {
+  const s = buf.toString('latin1');
+  const objs = new Map(); // numero -> { dic: texto, dados: Buffer|null }
+  const re = /(\d+) 0 obj\b/g;
+  let m;
+  while ((m = re.exec(s)) !== null) {
+    const num = Number(m[1]);
+    const ini = re.lastIndex;
+    const iStream = s.indexOf('stream', ini);
+    const iFim = s.indexOf('endobj', ini);
+    if (iFim < 0) break;
+    const temStream = iStream >= 0 && iStream < iFim
+      && s.slice(ini, iStream).trimEnd().endsWith('>>')
+      && /^\r?\n/.test(s.slice(iStream + 6, iStream + 8));
+    if (temStream) {
+      // objeto com stream: o dado vai até o próximo endstream
+      let d = iStream + 6;
+      if (s[d] === '\r') d++;
+      if (s[d] === '\n') d++;
+      const iEnd = s.indexOf('endstream', d);
+      if (iEnd < 0) break;
+      objs.set(num, { dic: s.slice(ini, iStream), dados: buf.subarray(d, iEnd) });
+      re.lastIndex = s.indexOf('endobj', iEnd) + 6;
+    } else {
+      objs.set(num, { dic: s.slice(ini, iFim), dados: null });
+      re.lastIndex = iFim + 6;
+    }
+  }
+
+  // objetos comprimidos dentro de /ObjStm
+  for (const [, o] of [...objs]) {
+    if (!o.dados || !/\/ObjStm/.test(o.dic)) continue;
+    const d = inflarSeguro(o.dados);
+    if (!d) continue;
+    const t = d.toString('latin1');
+    const first = Number((o.dic.match(/\/First\s+(\d+)/) || [])[1]);
+    const cab = t.slice(0, first).trim().split(/\s+/).map(Number);
+    for (let i = 0; i + 1 < cab.length; i += 2) {
+      const fim = i + 3 < cab.length ? first + cab[i + 3] : t.length;
+      objs.set(cab[i], { dic: t.slice(first + cab[i + 1], fim), dados: null });
+    }
+  }
+  return objs;
+}
+
+function refDe(txt, chave) {
+  const m = String(txt || '').match(new RegExp('/' + chave + '\\s+(\\d+)\\s+0\\s+R'));
+  return m ? Number(m[1]) : null;
+}
+
+// Devolve o conteúdo de um << ... >> a partir da posição de abertura, com aninhamento.
+function dicionarioBalanceado(txt, desde) {
+  let prof = 0;
+  for (let i = desde; i < txt.length - 1; i++) {
+    if (txt[i] === '<' && txt[i + 1] === '<') { prof++; i++; }
+    else if (txt[i] === '>' && txt[i + 1] === '>') {
+      prof--; i++;
+      if (prof === 0) return txt.slice(desde + 2, i - 1);
+    }
+  }
+  return '';
+}
+
+// O valor de uma chave que pode vir inline (<< ... >>) ou por referência (N 0 R).
+function valorDicionario(objs, txt, chave) {
+  const re = new RegExp('/' + chave + '\\s*(<<|(\\d+)\\s+0\\s+R)');
+  const m = String(txt || '').match(re);
+  if (!m) return null;
+  if (m[1] === '<<') return dicionarioBalanceado(txt, m.index + m[0].length - 2);
+  const o = objs.get(Number(m[2]));
+  if (!o) return null;
+  const t = o.dic.trim();
+  return t.startsWith('<<') ? dicionarioBalanceado(t, 0) : t;
+}
+
+function cmapDe(objs, num) {
+  const o = num != null ? objs.get(num) : null;
+  if (!o || !o.dados) return null;
+  const d = inflarSeguro(o.dados);
+  if (!d) return null;
+  const t = d.toString('latin1');
+  const mapa = new Map();
+  const u16 = (hex) => String.fromCharCode(parseInt(hex.slice(0, 4), 16));
+
+  const faixa = (t.match(/begincodespacerange\s*<([0-9a-fA-F]+)>/) || [])[1];
+  const bytes = faixa ? Math.max(1, faixa.length / 2) : 1;
+
+  for (const blk of t.matchAll(/beginbfrange([\s\S]*?)endbfrange/g)) {
+    for (const r of blk[1].matchAll(/<([0-9a-fA-F]+)>\s*<([0-9a-fA-F]+)>\s*(?:<([0-9a-fA-F]+)>|\[([^\]]*)\])/g)) {
+      const lo = parseInt(r[1], 16), hi = parseInt(r[2], 16);
+      if (r[3] !== undefined) {
+        const base = parseInt(r[3].slice(0, 4), 16);
+        for (let k = lo; k <= hi && k - lo < 70000; k++) mapa.set(k, String.fromCharCode(base + (k - lo)));
+      } else {
+        const alvos = [...r[4].matchAll(/<([0-9a-fA-F]+)>/g)].map((x) => u16(x[1]));
+        alvos.forEach((a, k) => mapa.set(lo + k, a));
+      }
+    }
+  }
+  for (const blk of t.matchAll(/beginbfchar([\s\S]*?)endbfchar/g)) {
+    for (const r of blk[1].matchAll(/<([0-9a-fA-F]+)>\s*<([0-9a-fA-F]+)>/g)) mapa.set(parseInt(r[1], 16), u16(r[2]));
+  }
+  return { mapa, bytes };
+}
+
+function larguras(objs, txt) {
+  let lista = null;
+  const ref = String(txt).match(/\/Widths\s+(\d+)\s+0\s+R/);
+  const corpo = ref ? (objs.get(Number(ref[1])) || {}).dic : String(txt);
+  const m = String(corpo || '').match(/\/Widths\s*\[([^\]]*)\]/) || String(corpo || '').match(/^\s*\[([^\]]*)\]/);
+  if (m) lista = m[1].trim().split(/\s+/).map(Number);
+  return lista || [];
+}
+
+function fonteDe(objs, num) {
+  const o = objs.get(num);
+  if (!o) return null;
+  const txt = o.dic;
+  return {
+    cmap: cmapDe(objs, refDe(txt, 'ToUnicode')),
+    primeiro: Number((txt.match(/\/FirstChar\s+(\d+)/) || [, 0])[1]),
+    larg: larguras(objs, txt),
+    padrao: Number((txt.match(/\/MissingWidth\s+(\d+)/) || [, 500])[1]) || 500,
+  };
+}
+
+// ---- interpretador do conteúdo ----
+const BARRA = String.fromCharCode(92);
+
+function* tokensConteudo(s) {
+  let i = 0;
+  const n = s.length;
+  const ESP = ' \t\r\n\x00\f';
+  const FIMTOK = ' \t\r\n\x00\f()<>[]/%';
+  while (i < n) {
+    const c = s[i];
+    if (ESP.includes(c)) { i++; continue; }
+    if (c === '%') { while (i < n && s[i] !== '\r' && s[i] !== '\n') i++; continue; }
+    if (c === '(') {
+      let prof = 1, j = i + 1, out = '';
+      while (j < n && prof) {
+        const ch = s[j];
+        if (ch === BARRA) {
+          j++;
+          const e = s[j];
+          if (e >= '0' && e <= '7') {
+            let o = e;
+            for (let k = 0; k < 2; k++) if (j + 1 < n && s[j + 1] >= '0' && s[j + 1] <= '7') { j++; o += s[j]; }
+            out += String.fromCharCode(parseInt(o, 8) & 255);
+          } else if (e === 'n') out += '\n';
+          else if (e === 'r') out += '\r';
+          else if (e === 't') out += '\t';
+          else if (e === 'b') out += '\b';
+          else if (e === 'f') out += '\f';
+          else if (e === '\r' || e === '\n') { /* continuação de linha */ }
+          else out += e;
+        } else if (ch === '(') { prof++; out += ch; }
+        else if (ch === ')') { prof--; if (prof) out += ch; }
+        else out += ch;
+        j++;
+      }
+      yield ['s', out]; i = j; continue;
+    }
+    if (c === '<' && s[i + 1] !== '<') {
+      const j = s.indexOf('>', i);
+      let hx = s.slice(i + 1, j).replace(/\s/g, '');
+      if (hx.length % 2) hx += '0';
+      let out = '';
+      for (let k = 0; k < hx.length; k += 2) out += String.fromCharCode(parseInt(hx.slice(k, k + 2), 16));
+      yield ['s', out]; i = j + 1; continue;
+    }
+    if (c === '[' || c === ']') { yield [c, c]; i++; continue; }
+    if ((c === '<' || c === '>') && s[i + 1] === c) { i += 2; continue; }
+    if (c === '/') {
+      let j = i + 1;
+      while (j < n && !FIMTOK.includes(s[j])) j++;
+      yield ['n', s.slice(i + 1, j)]; i = j; continue;
+    }
+    let j = i;
+    while (j < n && !FIMTOK.includes(s[j])) j++;
+    if (j === i) { i++; continue; }
+    const w = s.slice(i, j); i = j;
+    const num = Number(w);
+    yield Number.isNaN(num) ? ['o', w] : ['x', num];
+  }
+}
+
+function mult(a, b) { // aplica a e depois b
+  return [
+    a[0] * b[0] + a[1] * b[2], a[0] * b[1] + a[1] * b[3],
+    a[2] * b[0] + a[3] * b[2], a[2] * b[1] + a[3] * b[3],
+    a[4] * b[0] + a[5] * b[2] + b[4], a[4] * b[1] + a[5] * b[3] + b[5],
+  ];
+}
+
+// Trechos de texto de uma página: { x, y, t, tam } em coordenadas de TELA (já com /Rotate).
+function trechosDaPagina(objs, pagina) {
+  const dicPagina = pagina.dic;
+  let rot = Number((dicPagina.match(/\/Rotate\s+(-?\d+)/) || [, 0])[1]);
+  if (!rot) {
+    const pai = objs.get(refDe(dicPagina, 'Parent'));
+    if (pai) rot = Number((pai.dic.match(/\/Rotate\s+(-?\d+)/) || [, 0])[1]);
+  }
+  rot = ((rot % 360) + 360) % 360;
+
+  const recursos = valorDicionario(objs, dicPagina, 'Resources') || '';
+  const dicFontes = valorDicionario(objs, recursos, 'Font') || '';
+  const fontes = new Map();
+  for (const f of dicFontes.matchAll(/\/([\w.+-]+)\s+(\d+)\s+0\s+R/g)) {
+    const fonte = fonteDe(objs, Number(f[2]));
+    if (fonte) fontes.set(f[1], fonte);
+  }
+
+  const lista = (dicPagina.match(/\/Contents\s*\[([^\]]*)\]/) || [])[1];
+  const nums = lista
+    ? [...lista.matchAll(/(\d+)\s+0\s+R/g)].map((x) => Number(x[1]))
+    : [refDe(dicPagina, 'Contents')].filter((x) => x != null);
+  let conteudo = '';
+  for (const n of nums) {
+    const o = objs.get(n);
+    const d = o && o.dados ? inflarSeguro(o.dados) : null;
+    if (d) conteudo += d.toString('latin1') + '\n';
+  }
+
+  const trechos = [];
+  let ctm = [1, 0, 0, 1, 0, 0];
+  const pilha = [];
+  let tm = [1, 0, 0, 1, 0, 0], tlm = tm;
+  let fonte = null, tamFonte = 1, entrelinha = 0;
+  let st = [];
+
+  const decodificar = (f, str) => {
+    if (f && f.cmap) {
+      const { mapa, bytes } = f.cmap;
+      let out = '';
+      for (let k = 0; k + bytes <= str.length; k += bytes) {
+        let cod = 0;
+        for (let b = 0; b < bytes; b++) cod = cod * 256 + str.charCodeAt(k + b);
+        out += mapa.has(cod) ? mapa.get(cod) : '';
+      }
+      return out;
+    }
+    return str;
+  };
+  const largura = (f, cod) => {
+    if (!f) return 500;
+    const k = cod - f.primeiro;
+    return k >= 0 && k < f.larg.length && f.larg[k] ? f.larg[k] : f.padrao;
+  };
+
+  const emitir = (itens) => {
+    const f = fonte;
+    const base = mult(tm, ctm);
+    const passo = Math.hypot(base[0], base[1]) || 1;
+    let desl = 0, iniSeg = 0, seg = '';
+    const fechar = () => {
+      if (seg.trim()) {
+        const p = mult([1, 0, 0, 1, iniSeg, 0], base);
+        trechos.push({ x: p[4], y: p[5], t: seg, tam: Math.abs(tamFonte * passo) });
+      }
+      seg = '';
+    };
+    const bytes = f && f.cmap ? f.cmap.bytes : 1;
+    for (const it of itens) {
+      if (typeof it === 'string') {
+        if (!seg) iniSeg = desl;
+        for (let k = 0; k + bytes <= it.length; k += bytes) {
+          let cod = 0;
+          for (let b = 0; b < bytes; b++) cod = cod * 256 + it.charCodeAt(k + b);
+          desl += largura(f, cod) * tamFonte / 1000;
+        }
+        seg += decodificar(f, it);
+      } else if (Math.abs(it) > 1500) {   // salto de coluna: o que vem depois é outra célula
+        fechar(); desl -= it * tamFonte / 1000;
+      } else {
+        desl -= it * tamFonte / 1000;
+        if (it < -150 && seg) seg += ' ';  // espaço entre palavras
+      }
+    }
+    fechar();
+    tm = mult([1, 0, 0, 1, desl, 0], tm);
+  };
+
+  for (const [tipo, v] of tokensConteudo(conteudo)) {
+    if (tipo === 'o') {
+      switch (v) {
+        case 'q': pilha.push(ctm.slice()); break;
+        case 'Q': if (pilha.length) ctm = pilha.pop(); break;
+        case 'cm': if (st.length >= 6) ctm = mult(st.slice(-6), ctm); break;
+        case 'BT': tm = tlm = [1, 0, 0, 1, 0, 0]; break;
+        case 'Tf': fonte = fontes.get(st[st.length - 2]) || null; tamFonte = st[st.length - 1]; break;
+        case 'Tm': if (st.length >= 6) tm = tlm = st.slice(-6); break;
+        case 'Td': case 'TD': {
+          const tx = st[st.length - 2], ty = st[st.length - 1];
+          tlm = mult([1, 0, 0, 1, tx, ty], tlm); tm = tlm;
+          if (v === 'TD') entrelinha = -ty;
+          break;
+        }
+        case 'T*': tlm = mult([1, 0, 0, 1, 0, -entrelinha], tlm); tm = tlm; break;
+        case 'TL': entrelinha = st[st.length - 1]; break;
+        case 'Tj': emitir([st[st.length - 1]]); break;
+        case 'TJ': emitir(Array.isArray(st[st.length - 1]) ? st[st.length - 1] : []); break;
+        default: break;
+      }
+      st = [];
+    } else if (tipo === '[') st.push('[');
+    else if (tipo === ']') {
+      let j = st.length - 1;
+      while (j >= 0 && st[j] !== '[') j--;
+      const arr = st.slice(j + 1);
+      st = st.slice(0, Math.max(j, 0)); st.push(arr);
+    } else st.push(v);
+  }
+
+  // coordenadas de tela: o visualizador gira a página /Rotate graus no sentido horário
+  const girar = {
+    0: (x, y) => [x, y],
+    90: (x, y) => [y, -x],
+    180: (x, y) => [-x, -y],
+    270: (x, y) => [-y, x],
+  }[rot] || ((x, y) => [x, y]);
+  return trechos.map((t) => {
+    const [X, Y] = girar(t.x, t.y);
+    return { x: X, y: Y, t: t.t, tam: t.tam };
+  });
+}
+
+// Linhas como a pessoa vê (de cima para baixo), cada uma com as células da esquerda para a direita.
+function linhasPosicionadas(buf) {
+  const objs = objetosDoPdf(buf);
+  const ehPagina = (o) => /\/Type\s*\/Page\b(?!s)/.test(o.dic);
+
+  // ordem de leitura = ordem da árvore /Pages -> /Kids, não a numeração dos objetos
+  const emOrdem = [];
+  const visitados = new Set();
+  const descer = (num) => {
+    const o = objs.get(num);
+    if (!o || visitados.has(num)) return;
+    visitados.add(num);
+    if (ehPagina(o)) { emOrdem.push(o); return; }
+    const kids = (o.dic.match(/\/Kids\s*\[([^\]]*)\]/) || [])[1];
+    if (kids) for (const k of kids.matchAll(/(\d+)\s+0\s+R/g)) descer(Number(k[1]));
+  };
+  const catalogo = [...objs.values()].find((o) => /\/Type\s*\/Catalog/.test(o.dic));
+  if (catalogo) descer(refDe(catalogo.dic, 'Pages'));
+
+  const paginas = emOrdem.length
+    ? emOrdem
+    : [...objs.entries()].filter(([, o]) => ehPagina(o)).sort((a, b) => a[0] - b[0]).map(([, o]) => o);
+
+  const todas = [];
+  for (const pag of paginas) {
+    const tr = trechosDaPagina(objs, pag);
+    if (!tr.length) continue;
+    const tams = tr.map((t) => t.tam).sort((a, b) => a - b);
+    const tol = Math.max(0.4 * (tams[Math.floor(tams.length / 2)] || 6), 1);
+    const ordenados = tr.slice().sort((a, b) => b.y - a.y); // topo primeiro
+    const linhas = [];
+    for (const t of ordenados) {
+      const ult = linhas[linhas.length - 1];
+      if (ult && Math.abs(ult.y - t.y) <= tol) ult.cel.push(t);
+      else linhas.push({ y: t.y, cel: [t] });
+    }
+    for (const l of linhas) {
+      l.cel.sort((a, b) => a.x - b.x);
+      todas.push(l.cel.map((c) => c.t.replace(/\s+/g, ' ').trim()).filter(Boolean));
+    }
+  }
+  return todas.filter((l) => l.length);
+}
+
+// Relatório "ANÁLISE ABC DE VENDAS - VAREJO" da rede CIDADE (sistema TOTVS Varejo).
+//
+// É o que a loja VENDEU do nosso produto no período — não é pedido de compra, e
+// por isso só a Tainara lança. Vem por loja ("Empresa: 1 - 01-PEDREIRA"), com a
+// quantidade de cada produto e subtotal por loja.
+//
+// O que o relatório NÃO traz, e por isso não dá para tirar dele:
+//  - CNPJ: a loja vem só pelo rótulo ("01-PEDREIRA");
+//  - preço: as colunas de valor saem vazias, então a nota usa o preço do cadastro;
+//  - o nosso código de produto: vem o código do produto NO SISTEMA DELES
+//    (156655), que não é o nosso — daí o mapa CIDADE_PRODUTO abaixo.
+//
+// A identificação segue a regra do projeto: por código, nunca por nome. O que não
+// casar é recusado, não chutado.
+
+// código do produto na Cidade -> `codigo` interno do produto no eGestor.
+// Produto novo entra sem mexer aqui: basta pôr CIDADE:<código> nas observações
+// internas do produto, no eGestor (mesma convenção da FORMOSA).
+const CIDADE_PRODUTO = {
+  '156655': 3, // SUCO CANA DAMOENDA 1L             -> SUCO DE CANA DE ACUCAR 1 LITRO
+  '156663': 1, // SUCO CANA DAMOENDA 330ML          -> SUCO DE CANA DE ACUCAR 330ML
+  '209538': 6, // SUCO CANA DAMOENDA C/ LIMAO 1L    -> ... COM LIMÃO 1 LITRO
+  '209511': 4, // SUCO CANA DAMOENDA C/ LIMAO 330ML -> ... COM LIMÃO 330ML
+  '209520': 5, // SUCO CANA DAMOENDA C/ LIMAO 500ML -> ... COM LIMÃO 500ML
+};
+
+// rótulo da loja (sem o número da frente) -> CNPJ no cadastro do eGestor.
+// Loja nova entra pondo CIDADE:<ROTULO> nas observações do contato.
+const CIDADE_LOJA_CNPJ = {
+  PEDREIRA: '83306969000112', // SUPERMERCADO CIDADE LTDA - PEDREIRA
+  PVARGAS: '83306969000546',  // SUPERMERCADO CIDADE LTDA - PRESIDENTE VARGAS
+};
+
+// "01-PEDREIRA" -> "PEDREIRA"
+function chaveLojaCidade(rotulo) {
+  return String(rotulo || '').replace(/^\d+\s*-\s*/, '').replace(/\s+/g, '').toUpperCase();
+}
+
+const RE_QTD_CIDADE = /^\d{1,3}(?:\.\d{3})*,\d{3}$/; // quantidade tem 3 casas; valor em dinheiro tem 2
+
+function lerRelatorioCidade(linhas) {
+  const todo = linhas.map((l) => l.join(' ')).join('\n');
+  if (!/AN.LISE ABC DE VENDAS/i.test(todo) || !/Fornecedores\s*:/i.test(todo) || !/KALUME/i.test(todo)) return null;
+
+  const per = todo.match(/(\d{2}\/\d{2}\/\d{4})\s*a\s*(\d{2}\/\d{2}\/\d{4})/);
+  const periodo = per ? `${per[1]} a ${per[2]}` : null;
+
+  const lojas = [];
+  let atual = null;
+  for (const l of linhas) {
+    const txt = l.join(' ').replace(/\s+/g, ' ').trim();
+
+    const emp = txt.match(/^Empresa:\s*(\d+)\s*-\s*(.+)$/i); // "Empresa(s):" não casa: falta o ":" colado
+    if (emp) {
+      // uma loja que passa de uma página reaparece com o mesmo cabeçalho: junta, não duplica
+      atual = lojas.find((x) => x.numero === emp[1]);
+      if (!atual) { atual = { numero: emp[1], rotulo: emp[2].trim(), itens: [], subtotal: null }; lojas.push(atual); }
+      continue;
+    }
+    if (!atual) continue;
+
+    if (/^Sub\s*Total\s*Empresa:/i.test(txt)) {
+      const q = l.map((c) => c.trim()).find((c) => RE_QTD_CIDADE.test(c));
+      if (q) atual.subtotal = numeroBr(q);
+      continue;
+    }
+
+    // Pos. | Cód. | Produto | Embal | Quantidade — lido pela linha inteira, sem
+    // depender de como as células foram cortadas
+    const it = txt.match(/^(\d+)\s+(\d{4,})\s+(.+?)\s+[A-Z]{2}\s*\d*\s+(\d{1,3}(?:\.\d{3})*,\d{3})\b/);
+    if (it) {
+      atual.itens.push({
+        codigoProprio: it[2],
+        descricaoPedido: it[3].trim(),
+        ean: '',
+        qtd: Math.round(numeroBr(it[4])),
+        preco: null,
+        total: null,
+      });
+    }
+  }
+
+  // "5 de 6 Produto(s) Listado(s)": se a lista saiu menor que o universo, falta linha
+  const avisos = [];
+  const lis = todo.match(/(\d+)\s+de\s+(\d+)\s+Produto\(s\)\s+Listado/i);
+  if (lis && Number(lis[1]) < Number(lis[2])) {
+    avisos.push(`O relatório diz que listou só ${lis[1]} de ${lis[2]} produtos — ${Number(lis[2]) - Number(lis[1])} ficou de fora. Confira com a Cidade se não faltou venda.`);
+  }
+
+  const comItens = lojas.filter((x) => x.itens.length);
+  if (!comItens.length) return null;
+
+  return comItens.map((x) => ({
+    loja: x.rotulo,
+    rotuloCidade: chaveLojaCidade(x.rotulo),
+    cnpj: null,
+    numero: null,
+    entrega: null,
+    periodo,
+    itens: x.itens,
+    qtdDocumento: x.subtotal,
+    totalDocumento: null,
+    confirmarLoja: false, // o rótulo é explícito, não deduzido por ordem como no relatório da FORMOSA
+    semPreco: true,
+    avisos,
+  }));
+}
+
 // Confere as contas do próprio documento. Se não fecharem, não confiamos na leitura.
 function conferir(p) {
   const problemas = [];
-  for (const i of p.itens) {
-    const esperado = Math.round(i.qtd * i.preco * 100) / 100;
-    if (Math.abs(esperado - i.total) > TOLERANCIA) {
-      problemas.push(`${i.codigoProprio}: ${i.qtd} x ${i.preco} daria ${esperado}, o documento diz ${i.total}`);
+  // documento sem preço (relatório de vendas da Cidade): não há conta de valor a
+  // conferir, só a de quantidades, logo abaixo
+  if (!p.semPreco) {
+    for (const i of p.itens) {
+      const esperado = Math.round(i.qtd * i.preco * 100) / 100;
+      if (Math.abs(esperado - i.total) > TOLERANCIA) {
+        problemas.push(`${i.codigoProprio}: ${i.qtd} x ${i.preco} daria ${esperado}, o documento diz ${i.total}`);
+      }
     }
-  }
-  const somaItens = Math.round(p.itens.reduce((s, i) => s + i.total, 0) * 100) / 100;
-  if (p.totalDocumento != null && Math.abs(somaItens - p.totalDocumento) > TOLERANCIA) {
-    problemas.push(`soma dos itens ${somaItens} não bate com o total ${p.totalDocumento}`);
+    const somaItens = Math.round(p.itens.reduce((s, i) => s + i.total, 0) * 100) / 100;
+    if (p.totalDocumento != null && Math.abs(somaItens - p.totalDocumento) > TOLERANCIA) {
+      problemas.push(`soma dos itens ${somaItens} não bate com o total ${p.totalDocumento}`);
+    }
   }
   const somaQtd = p.itens.reduce((s, i) => s + i.qtd, 0);
   if (p.qtdDocumento != null && somaQtd !== p.qtdDocumento) {
@@ -418,12 +924,30 @@ export default async function handler(req, res) {
       }
     } else {
       const texto = textoDoPdf(buf).replace(/\s+/g, ' ');
-      if (texto.length < 200) {
-        throw erro(422, 'Esse PDF não tem texto — parece ser digitalização ou foto. Lance esse pedido à mão.');
-      }
-      brutos = lerPedidosDeCompra(texto) || lerPedidoDeCompra(texto) || lerRelatorioFormosa(texto);
+
+      // Primeiro os leitores de texto simples, que já funcionavam e não mudam.
+      brutos = texto.length >= 200
+        ? lerPedidosDeCompra(texto) || lerPedidoDeCompra(texto) || lerRelatorioFormosa(texto)
+        : null;
+
+      // Só se nenhum reconheceu é que entra o extrator com posição — para PDF de
+      // sistema, com fonte em subconjunto e página girada. Texto curto no leitor
+      // simples não quer dizer "sem texto": pode estar todo em fonte com mapa.
       if (!brutos) {
-        throw erro(422, 'Não reconheci o formato desse arquivo. O app lê o "PEDIDO DE COMPRAS" do Mateus, o "PEDIDO DE COMPRA" da LIDER e o relatório de produtos vendidos da FORMOSA.');
+        let linhas = [];
+        try { linhas = linhasPosicionadas(buf); } catch { linhas = []; }
+        if (linhas.length) brutos = lerRelatorioCidade(linhas);
+        else if (texto.length < 200) {
+          throw erro(422, 'Esse PDF não tem texto — parece ser digitalização ou foto. Lance esse pedido à mão.');
+        }
+      }
+      if (!brutos) {
+        throw erro(422, 'Não reconheci o formato desse arquivo. O app lê o "PEDIDO DE COMPRAS" do Mateus, o "PEDIDO DE COMPRA" da LIDER, o relatório de produtos vendidos da FORMOSA e o relatório de vendas da rede CIDADE.');
+      }
+
+      // o relatório da Cidade é o que a loja vendeu, e quem fatura é a Tainara
+      if (brutos.some((p) => p.rotuloCidade) && sessao.papel !== 'dona') {
+        throw erro(403, 'O relatório de vendas da Cidade é a Tainara quem lança. Aqui dá para anexar o PDF do pedido da loja.');
       }
     }
 
@@ -436,6 +960,8 @@ export default async function handler(req, res) {
     const porProprio = new Map();
     const porEan = new Map();
     const porFormosaProd = new Map();
+    const porCidadeProd = new Map();
+    const porCodigo = new Map(produtos.map((p) => [Number(p.codigo), p]));
     produtos.forEach((p) => {
       const cp = String(p.codigoProprio || '').trim();
       const ean = String(p.refEanGtin || '').trim();
@@ -444,6 +970,9 @@ export default async function handler(req, res) {
       // o código da FORMOSA vive nas observações internas do produto
       const f = String(p.anotacoesInternas || '').match(/FORMOSA:\s*([\w.-]+)/i);
       if (f) porFormosaProd.set(f[1].trim(), p);
+      // o da CIDADE também; sem isso vale o mapa CIDADE_PRODUTO do código
+      const c = String(p.anotacoesInternas || '').match(/CIDADE:\s*([\w.-]+)/i);
+      if (c) porCidadeProd.set(c[1].trim(), p);
     });
 
     // rótulo da filial da FORMOSA vive nas observações do contato
@@ -468,16 +997,29 @@ export default async function handler(req, res) {
       if (m) porCodigoMateus.set(m[1], c);
     });
 
+    // O rótulo da loja da CIDADE ("PEDREIRA") vira cliente por CIDADE:<ROTULO> nas
+    // observações do contato ou, na falta, pelo CNPJ da tabela CIDADE_LOJA_CNPJ.
+    const porCidadeLoja = new Map();
+    contatos.forEach((c) => {
+      const f = String(c.obs || '').match(/CIDADE:\s*([\w. -]+)/i);
+      if (f) porCidadeLoja.set(chaveLojaCidade(f[1]), c);
+    });
+
     const pedidos = brutos.map((p) => {
-      const cliente = p.rotuloFormosa
-        ? porFormosaLoja.get(String(p.rotuloFormosa).toUpperCase()) || null
-        : p.codigoLojaMateus
-          ? porCodigoMateus.get(p.codigoLojaMateus) || null
-          : porCnpj.get(p.cnpj) || null;
+      const cliente = p.rotuloCidade
+        ? porCidadeLoja.get(p.rotuloCidade) || porCnpj.get(CIDADE_LOJA_CNPJ[p.rotuloCidade]) || null
+        : p.rotuloFormosa
+          ? porFormosaLoja.get(String(p.rotuloFormosa).toUpperCase()) || null
+          : p.codigoLojaMateus
+            ? porCodigoMateus.get(p.codigoLojaMateus) || null
+            : porCnpj.get(p.cnpj) || null;
       const contas = conferir(p);
 
       const itens = p.itens.map((i) => {
         const prod = (i.codigoFormosa ? porFormosaProd.get(i.codigoFormosa) : null)
+          || (p.rotuloCidade
+            ? porCidadeProd.get(i.codigoProprio) || porCodigo.get(CIDADE_PRODUTO[i.codigoProprio]) || null
+            : null)
           || porProprio.get(i.codigoProprio)
           || porEan.get(i.ean)
           || null;
@@ -502,11 +1044,17 @@ export default async function handler(req, res) {
       // na planilha a loja sai de um rótulo sem CNPJ: em vez de barrar, a tela pede
       // que ela escolha — o pedido só vira fila depois dessa escolha
       if (!cliente && !p.codigoLojaMateus) {
-        impedimentos.push(p.rotuloFormosa
-          ? `Filial "${p.rotuloFormosa}" não tem correspondência no cadastro. Ponha FORMOSA:${p.rotuloFormosa} nas observações do contato certo.`
-          : `Cliente com CNPJ ${p.cnpj} não está no cadastro do eGestor.`);
+        impedimentos.push(p.rotuloCidade
+          // aqui a loja vem por rótulo explícito, não por ordem: sem correspondência
+          // é recusa, não escolha — escolher poderia emitir nota para a loja errada
+          ? `A loja "${p.loja}" não tem correspondência no cadastro. Cadastre-a no eGestor e ponha CIDADE:${p.rotuloCidade} nas observações do contato.`
+          : p.rotuloFormosa
+            ? `Filial "${p.rotuloFormosa}" não tem correspondência no cadastro. Ponha FORMOSA:${p.rotuloFormosa} nas observações do contato certo.`
+            : `Cliente com CNPJ ${p.cnpj} não está no cadastro do eGestor.`);
       }
-      semProduto.forEach((i) => impedimentos.push(`Produto ${i.codigoProprio} (${i.descricaoPedido}) não está no cadastro.`));
+      semProduto.forEach((i) => impedimentos.push(p.rotuloCidade
+        ? `Produto ${i.codigoProprio} (${i.descricaoPedido}) sem correspondência. Ponha CIDADE:${i.codigoProprio} nas observações internas do produto certo no eGestor.`
+        : `Produto ${i.codigoProprio} (${i.descricaoPedido}) não está no cadastro.`));
       contas.forEach((c) => impedimentos.push(`Conta do documento não fecha — ${c}.`));
 
       return {
@@ -514,6 +1062,10 @@ export default async function handler(req, res) {
         cnpj: p.cnpj,
         numero: p.numero,
         entrega: p.entrega,
+        periodo: p.periodo || null,
+        // o documento não traz preço: a nota sai pelo do cadastro, e a tela avisa
+        semPreco: !!p.semPreco,
+        avisos: p.avisos || [],
         cliente: cliente ? { codigo: cliente.codigo, nome: cliente.nome, local: [cliente.bairro, cliente.cidade].filter(Boolean).join(' · ') } : null,
         itens,
         totalPedido: p.totalDocumento,

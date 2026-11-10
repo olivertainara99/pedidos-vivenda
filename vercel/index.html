@@ -456,7 +456,7 @@ input,button,select{font:inherit; color:inherit}
     var comPlanilha = estado.papel === 'dona';
     var h = '<div class="bloco"><p class="rot">Anexar pedido' + (comPlanilha ? '' : ' em PDF') + '</p>' +
       '<p class="vazio" style="padding:0 0 12px">Aquele PDF que a loja manda' +
-      (comPlanilha ? ', ou a planilha quinzenal do MATEUS (.xlsx)' : '') +
+      (comPlanilha ? ', a planilha quinzenal do MATEUS (.xlsx) ou o relatório de vendas da Cidade (PDF)' : '') +
       '. O app lê, você confere, e só então os pedidos vão para a fila.</p>' +
       '<input type="file" id="inArquivo" accept="' +
       (comPlanilha ? 'application/pdf,.pdf,.xlsx' : 'application/pdf,.pdf') + '" class="campo">' +
@@ -480,7 +480,8 @@ input,button,select{font:inherit; color:inherit}
         '<div class="cli">' + esc(p.cliente ? p.cliente.nome : p.loja) + '</div>' +
         '<div class="loc">' + esc(p.cliente ? p.cliente.local : (p.cnpj ? 'CNPJ ' + p.cnpj : p.loja)) +
           (p.numero ? ' · pedido ' + esc(p.numero) : '') +
-          (p.entrega ? ' · entrega ' + esc(p.entrega) : '') + '</div></div>' +
+          (p.entrega ? ' · entrega ' + esc(p.entrega) : '') +
+          (p.periodo ? ' · período ' + esc(p.periodo) : '') + '</div></div>' +
         '<span class="selo ' + (p.aproveitavel ? 'anotado' : 'erro') + '">' +
         (p.aproveitavel ? 'pronto' : 'não dá') + '</span></div>';
 
@@ -515,6 +516,8 @@ input,button,select{font:inherit; color:inherit}
         }else if(p.precoDoDocumento && i.precoNota != null){
           extra = ' <span style="color:var(--fraca)">varejo ' + moeda(i.precoPedido) +
                   ' → nota R$ ' + i.precoNota.toFixed(3).replace('.', ',') + '</span>';
+        }else if(p.semPreco && i.produto){
+          extra = ' <span style="color:var(--fraca)">' + moeda(i.produto.preco) + ' cada</span>';
         }
         h += '<li><span>' + esc(nome) + extra + '</span><b>' + i.qtd + '</b></li>';
       });
@@ -528,6 +531,13 @@ input,button,select{font:inherit; color:inherit}
           ' = ' + moeda(Math.round((p.totalPedido || 0) * (100 - p.descontoPct)) / 100) + '.</div>';
       }
       if(p.totalPedido && !p.precoDoDocumento) h += '<div class="nota">documento diz ' + moeda(p.totalPedido) + '</div>';
+      if(p.semPreco){
+        h += '<div class="nota">O relatório não traz preço. A nota sai pelo preço do cadastro, ' +
+          'o valor de cada linha está acima — confira antes de seguir.</div>';
+      }
+      (p.avisos || []).forEach(function(x){
+        h += '<div class="nota" style="color:var(--acento)">Atenção: ' + esc(x) + '</div>';
+      });
       (p.impedimentos || []).forEach(function(x){
         h += '<div class="nota" style="color:var(--perigo)">' + esc(x) + '</div>';
       });
